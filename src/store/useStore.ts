@@ -1,6 +1,56 @@
 import { create } from 'zustand';
 import { Merchant, License, Price, Inspection, Review, Rectification, DashboardStats, BusinessData } from '../types';
-import { merchants as initialMerchants, licenses as initialLicenses, prices as initialPrices, inspections as initialInspections, reviews as initialReviews, rectifications as initialRectifications, businessData as initialBusinessData } from '../data/mockData';
+
+const STORAGE_KEY = 'westlake-merchant-platform-data';
+
+interface StoredData {
+  merchants: Merchant[];
+  licenses: License[];
+  prices: Price[];
+  inspections: Inspection[];
+  reviews: Review[];
+  rectifications: Rectification[];
+  businessData: BusinessData[];
+}
+
+const loadFromStorage = (): StoredData | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load data from localStorage:', e);
+  }
+  return null;
+};
+
+const saveToStorage = (data: StoredData) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save data to localStorage:', e);
+  }
+};
+
+const getInitialData = (): StoredData => {
+  const stored = loadFromStorage();
+  if (stored) {
+    return {
+      ...stored,
+      licenses: stored.licenses.map(l => ({ ...l, status: calculateLicenseStatus(l.expireDate) })),
+    };
+  }
+  return {
+    merchants: [],
+    licenses: [],
+    prices: [],
+    inspections: [],
+    reviews: [],
+    rectifications: [],
+    businessData: [],
+  };
+};
 
 interface Store {
   merchants: Merchant[];
@@ -22,21 +72,28 @@ interface Store {
   
   addPrice: (price: Omit<Price, 'id'>) => void;
   updatePrice: (id: string, data: Partial<Price>) => void;
+  deletePrice: (id: string) => void;
   
   addInspection: (inspection: Omit<Inspection, 'id'>) => void;
+  deleteInspection: (id: string) => void;
   
+  addReview: (review: Omit<Review, 'id'>) => void;
   updateReview: (id: string, data: Partial<Review>) => void;
+  deleteReview: (id: string) => void;
   
   addRectification: (rectification: Omit<Rectification, 'id'>) => void;
   updateRectification: (id: string, data: Partial<Rectification>) => void;
+  deleteRectification: (id: string) => void;
   createRectificationFromInspection: (inspectionId: string) => void;
   createRectificationFromComplaint: (reviewId: string) => void;
   
   addBusinessData: (data: Omit<BusinessData, 'id'>) => void;
   updateBusinessData: (id: string, data: Partial<BusinessData>) => void;
+  deleteBusinessData: (id: string) => void;
   getBusinessDataByMerchant: (merchantId: string) => BusinessData[];
   
   getStats: () => DashboardStats;
+  clearAllData: () => void;
 }
 
 const generateId = () => {
@@ -54,38 +111,60 @@ const calculateLicenseStatus = (expireDate: string): 'valid' | 'expiring' | 'exp
   return 'valid';
 };
 
+const initialData = getInitialData();
+
 export const useStore = create<Store>((set, get) => ({
-  merchants: initialMerchants,
-  licenses: initialLicenses.map(l => ({ ...l, status: calculateLicenseStatus(l.expireDate) })),
-  prices: initialPrices,
-  inspections: initialInspections,
-  reviews: initialReviews,
-  rectifications: initialRectifications,
-  businessData: initialBusinessData,
+  merchants: initialData.merchants,
+  licenses: initialData.licenses,
+  prices: initialData.prices,
+  inspections: initialData.inspections,
+  reviews: initialData.reviews,
+  rectifications: initialData.rectifications,
+  businessData: initialData.businessData,
   
-  addMerchant: (merchant) => set((state) => ({
-    merchants: [...state.merchants, { ...merchant, id: generateId() }]
-  })),
+  addMerchant: (merchant) => {
+    const newMerchant = { ...merchant, id: generateId() };
+    set((state) => {
+      const newState = {
+        merchants: [...state.merchants, newMerchant],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
   
-  updateMerchant: (id, data) => set((state) => ({
-    merchants: state.merchants.map(m => m.id === id ? { ...m, ...data } : m)
-  })),
+  updateMerchant: (id, data) => set((state) => {
+    const newState = {
+      merchants: state.merchants.map(m => m.id === id ? { ...m, ...data } : m),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  deleteMerchant: (id) => set((state) => ({
-    merchants: state.merchants.filter(m => m.id !== id),
-    licenses: state.licenses.filter(l => l.merchantId !== id),
-    prices: state.prices.filter(p => p.merchantId !== id),
-    inspections: state.inspections.filter(i => i.merchantId !== id),
-    reviews: state.reviews.filter(r => r.merchantId !== id),
-    rectifications: state.rectifications.filter(r => r.merchantId !== id),
-    businessData: state.businessData.filter(b => b.merchantId !== id),
-  })),
+  deleteMerchant: (id) => set((state) => {
+    const newState = {
+      merchants: state.merchants.filter(m => m.id !== id),
+      licenses: state.licenses.filter(l => l.merchantId !== id),
+      prices: state.prices.filter(p => p.merchantId !== id),
+      inspections: state.inspections.filter(i => i.merchantId !== id),
+      reviews: state.reviews.filter(r => r.merchantId !== id),
+      rectifications: state.rectifications.filter(r => r.merchantId !== id),
+      businessData: state.businessData.filter(b => b.merchantId !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
   addLicense: (license) => {
     const status = calculateLicenseStatus(license.expireDate);
-    set((state) => ({
-      licenses: [...state.licenses, { ...license, id: generateId(), status }]
-    }));
+    const newLicense = { ...license, id: generateId(), status };
+    set((state) => {
+      const newState = {
+        licenses: [...state.licenses, newLicense],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
   },
   
   updateLicense: (id, data) => {
@@ -93,45 +172,133 @@ export const useStore = create<Store>((set, get) => ({
     if (data.expireDate) {
       newData.status = calculateLicenseStatus(data.expireDate);
     }
-    set((state) => ({
-      licenses: state.licenses.map(l => l.id === id ? { ...l, ...newData } : l)
-    }));
+    set((state) => {
+      const newState = {
+        licenses: state.licenses.map(l => l.id === id ? { ...l, ...newData } : l),
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
   },
   
-  deleteLicense: (id) => set((state) => ({
-    licenses: state.licenses.filter(l => l.id !== id)
-  })),
+  deleteLicense: (id) => set((state) => {
+    const newState = {
+      licenses: state.licenses.filter(l => l.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  updateLicenseStatuses: () => set((state) => ({
-    licenses: state.licenses.map(l => ({
-      ...l,
-      status: calculateLicenseStatus(l.expireDate)
-    }))
-  })),
+  updateLicenseStatuses: () => set((state) => {
+    const newState = {
+      licenses: state.licenses.map(l => ({
+        ...l,
+        status: calculateLicenseStatus(l.expireDate)
+      })),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  addPrice: (price) => set((state) => ({
-    prices: [...state.prices, { ...price, id: generateId() }]
-  })),
+  addPrice: (price) => {
+    const newPrice = { ...price, id: generateId() };
+    set((state) => {
+      const newState = {
+        prices: [...state.prices, newPrice],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
   
-  updatePrice: (id, data) => set((state) => ({
-    prices: state.prices.map(p => p.id === id ? { ...p, ...data } : p)
-  })),
+  updatePrice: (id, data) => set((state) => {
+    const newState = {
+      prices: state.prices.map(p => p.id === id ? { ...p, ...data } : p),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  addInspection: (inspection) => set((state) => ({
-    inspections: [...state.inspections, { ...inspection, id: generateId() }]
-  })),
+  deletePrice: (id) => set((state) => {
+    const newState = {
+      prices: state.prices.filter(p => p.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  updateReview: (id, data) => set((state) => ({
-    reviews: state.reviews.map(r => r.id === id ? { ...r, ...data } : r)
-  })),
+  addInspection: (inspection) => {
+    const newInspection = { ...inspection, id: generateId() };
+    set((state) => {
+      const newState = {
+        inspections: [...state.inspections, newInspection],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
   
-  addRectification: (rectification) => set((state) => ({
-    rectifications: [...state.rectifications, { ...rectification, id: generateId() }]
-  })),
+  deleteInspection: (id) => set((state) => {
+    const newState = {
+      inspections: state.inspections.filter(i => i.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
-  updateRectification: (id, data) => set((state) => ({
-    rectifications: state.rectifications.map(r => r.id === id ? { ...r, ...data } : r)
-  })),
+  addReview: (review) => {
+    const newReview = { ...review, id: generateId() };
+    set((state) => {
+      const newState = {
+        reviews: [...state.reviews, newReview],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
+  
+  updateReview: (id, data) => set((state) => {
+    const newState = {
+      reviews: state.reviews.map(r => r.id === id ? { ...r, ...data } : r),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
+  
+  deleteReview: (id) => set((state) => {
+    const newState = {
+      reviews: state.reviews.filter(r => r.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
+  
+  addRectification: (rectification) => {
+    const newRectification = { ...rectification, id: generateId() };
+    set((state) => {
+      const newState = {
+        rectifications: [...state.rectifications, newRectification],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
+  
+  updateRectification: (id, data) => set((state) => {
+    const newState = {
+      rectifications: state.rectifications.map(r => r.id === id ? { ...r, ...data } : r),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
+  
+  deleteRectification: (id) => set((state) => {
+    const newState = {
+      rectifications: state.rectifications.filter(r => r.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
   createRectificationFromInspection: (inspectionId) => {
     const state = get();
@@ -151,9 +318,14 @@ export const useStore = create<Store>((set, get) => ({
       sourceId: inspectionId,
     };
     
-    set((s) => ({
-      rectifications: [...s.rectifications, { ...rectification, id: generateId() }]
-    }));
+    const newRectification = { ...rectification, id: generateId() };
+    set((s) => {
+      const newState = {
+        rectifications: [...s.rectifications, newRectification],
+      };
+      saveToStorage({ ...s, ...newState });
+      return newState;
+    });
   },
   
   createRectificationFromComplaint: (reviewId) => {
@@ -176,19 +348,42 @@ export const useStore = create<Store>((set, get) => ({
     
     const newRectification = { ...rectification, id: generateId() };
     
-    set((s) => ({
-      rectifications: [...s.rectifications, newRectification],
-      reviews: s.reviews.map(r => r.id === reviewId ? { ...r, rectificationId: newRectification.id } : r)
-    }));
+    set((s) => {
+      const newState = {
+        rectifications: [...s.rectifications, newRectification],
+        reviews: s.reviews.map(r => r.id === reviewId ? { ...r, rectificationId: newRectification.id } : r),
+      };
+      saveToStorage({ ...s, ...newState });
+      return newState;
+    });
   },
   
-  addBusinessData: (data) => set((state) => ({
-    businessData: [...state.businessData, { ...data, id: generateId() }]
-  })),
+  addBusinessData: (data) => {
+    const newData = { ...data, id: generateId() };
+    set((state) => {
+      const newState = {
+        businessData: [...state.businessData, newData],
+      };
+      saveToStorage({ ...state, ...newState });
+      return newState;
+    });
+  },
   
-  updateBusinessData: (id, data) => set((state) => ({
-    businessData: state.businessData.map(b => b.id === id ? { ...b, ...data } : b)
-  })),
+  updateBusinessData: (id, data) => set((state) => {
+    const newState = {
+      businessData: state.businessData.map(b => b.id === id ? { ...b, ...data } : b),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
+  
+  deleteBusinessData: (id) => set((state) => {
+    const newState = {
+      businessData: state.businessData.filter(b => b.id !== id),
+    };
+    saveToStorage({ ...state, ...newState });
+    return newState;
+  }),
   
   getBusinessDataByMerchant: (merchantId) => {
     const state = get();
@@ -212,5 +407,18 @@ export const useStore = create<Store>((set, get) => ({
       pendingComplaints: state.reviews.filter(r => r.type === 'complaint' && r.status === 'pending').length,
       revenueThisMonth: thisMonthBusinessData.reduce((sum, b) => sum + b.revenue, 0),
     };
+  },
+  
+  clearAllData: () => {
+    localStorage.removeItem(STORAGE_KEY);
+    set({
+      merchants: [],
+      licenses: [],
+      prices: [],
+      inspections: [],
+      reviews: [],
+      rectifications: [],
+      businessData: [],
+    });
   },
 }));

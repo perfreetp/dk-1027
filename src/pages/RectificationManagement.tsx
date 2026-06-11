@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useStore } from '../store/useStore';
-import { Search, Plus, CheckCircle, Clock, AlertTriangle, Calendar, User, CheckSquare, XSquare, FileText, Upload, Link } from 'lucide-react';
+import { Search, Plus, CheckCircle, Clock, AlertTriangle, Calendar, User, CheckSquare, XSquare, FileText, Upload, Link, Paperclip, X } from 'lucide-react';
 import { Rectification, Inspection, Review } from '../types';
 
 type RectificationStatus = 'all' | 'pending' | 'processing' | 'reviewing' | 'completed' | 'rejected';
@@ -16,6 +16,9 @@ const RectificationManagement: React.FC = () => {
   const [selectedRectification, setSelectedRectification] = useState<Rectification | null>(null);
   const [selectedSourceType, setSelectedSourceType] = useState<'inspection' | 'complaint'>('inspection');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [submitNote, setSubmitNote] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     merchantId: '',
     title: '',
@@ -79,6 +82,20 @@ const RectificationManagement: React.FC = () => {
     });
     setShowSubmitModal(false);
     setSelectedRectification(null);
+    setSubmitNote('');
+    setSelectedFiles([]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const fileNames = Array.from(files).map(f => f.name);
+      setSelectedFiles(prev => [...prev, ...fileNames]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleComplete = (rectId: string) => {
@@ -313,6 +330,23 @@ const RectificationManagement: React.FC = () => {
                 </div>
               )}
 
+              {rect.attachmentUrls && rect.attachmentUrls.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2 flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" />
+                    附件文件
+                  </p>
+                  <div className="space-y-1">
+                    {rect.attachmentUrls.map((file, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm text-gray-700">
+                        <FileText className="w-4 h-4 text-gray-500" />
+                        <span>{file}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {rect.rejectionReason && (
                 <div className="mb-4 p-3 bg-red-50 rounded-lg">
                   <p className="text-xs text-red-600 mb-1">驳回原因</p>
@@ -488,15 +522,12 @@ const RectificationManagement: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">提交整改说明</h3>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const note = (e.target as HTMLFormElement).note.value;
-              handleSubmitReview(selectedRectification.id, note, []);
-            }} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">整改说明</label>
                 <textarea
-                  name="note"
+                  value={submitNote}
+                  onChange={(e) => setSubmitNote(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={4}
                   placeholder="请详细描述整改措施和结果..."
@@ -504,13 +535,39 @@ const RectificationManagement: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">上传附件</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  multiple
+                  className="hidden"
+                />
+                <div 
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-sm text-gray-500">点击或拖拽上传整改相关图片或文件</p>
-                  <button type="button" className="mt-2 text-blue-600 text-sm hover:text-blue-700">
-                    选择文件
-                  </button>
+                  <p className="text-xs text-gray-400 mt-1">支持多文件上传</p>
                 </div>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-blue-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm text-blue-800">{file}</span>
+                        </div>
+                        <button
+                          onClick={() => removeFile(index)}
+                          className="p-1 text-red-500 hover:bg-red-100 rounded"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex gap-3">
                 <button
@@ -518,19 +575,21 @@ const RectificationManagement: React.FC = () => {
                   onClick={() => {
                     setShowSubmitModal(false);
                     setSelectedRectification(null);
+                    setSubmitNote('');
+                    setSelectedFiles([]);
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   取消
                 </button>
                 <button
-                  type="submit"
+                  onClick={() => handleSubmitReview(selectedRectification.id, submitNote, selectedFiles)}
                   className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 >
                   提交复查
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

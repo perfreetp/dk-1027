@@ -1,19 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { BarChart3, Download, Calendar, TrendingUp, Building2, Star, AlertTriangle, FileCheck, Plus, Edit, Trash2 } from 'lucide-react';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { monthlyRevenue, categoryDistribution, ratingDistribution, inspectionStats } from '../data/mockData';
 import { BusinessData } from '../types';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const Reports: React.FC = () => {
-  const { merchants, licenses, inspections, reviews, rectifications, businessData, addBusinessData, updateBusinessData } = useStore();
+  const { merchants, licenses, inspections, reviews, rectifications, businessData, addBusinessData, updateBusinessData, deleteBusinessData } = useStore();
   const [startDate, setStartDate] = useState('2024-01-01');
-  const [endDate, setEndDate] = useState('2024-06-30');
+  const [endDate, setEndDate] = useState('2024-12-31');
   const [showBusinessDataModal, setShowBusinessDataModal] = useState(false);
   const [selectedMerchantId, setSelectedMerchantId] = useState('');
+  const [editingBusinessDataId, setEditingBusinessDataId] = useState<string | null>(null);
 
   interface FormData {
     merchantId: string;
@@ -35,8 +35,6 @@ const Reports: React.FC = () => {
     notes: '',
   });
 
-  const totalRevenue = monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0);
-  const avgMonthlyRevenue = (totalRevenue / monthlyRevenue.length).toFixed(0);
   const rectificationRate = rectifications.length > 0
     ? ((rectifications.filter(r => r.status === 'completed').length / rectifications.length) * 100).toFixed(0)
     : '0';
@@ -45,12 +43,62 @@ const Reports: React.FC = () => {
   const totalCustomers = businessData.reduce((sum, b) => sum + b.customerCount, 0);
   const totalRentPaid = businessData.reduce((sum, b) => sum + b.rentPaid, 0);
 
+  const monthlyRevenueData = useMemo(() => {
+    const months: { [key: string]: number } = {};
+    businessData.forEach(b => {
+      if (months[b.month]) {
+        months[b.month] += b.revenue;
+      } else {
+        months[b.month] = b.revenue;
+      }
+    });
+    const sortedMonths = Object.keys(months).sort();
+    return sortedMonths.map(month => ({
+      month: month.replace('-', '年') + '月',
+      revenue: months[month]
+    }));
+  }, [businessData]);
+
+  const avgMonthlyRevenue = monthlyRevenueData.length > 0
+    ? (totalBusinessRevenue / monthlyRevenueData.length / 10000).toFixed(1)
+    : '0';
+
+  const categoryDistributionData = useMemo(() => {
+    const categories: { [key: string]: number } = {};
+    merchants.forEach(m => {
+      if (categories[m.category]) {
+        categories[m.category]++;
+      } else {
+        categories[m.category] = 1;
+      }
+    });
+    return Object.entries(categories).map(([category, count]) => ({ category, count }));
+  }, [merchants]);
+
+  const ratingDistributionData = useMemo(() => {
+    const ratings: { [key: string]: number } = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    merchants.forEach(m => {
+      ratings[m.starLevel]++;
+    });
+    return Object.entries(ratings).map(([rating, count]) => ({ rating: parseInt(rating), count }));
+  }, [merchants]);
+
+  const inspectionStatsData = useMemo(() => {
+    const stats = { pass: 0, partial: 0, fail: 0 };
+    inspections.forEach(i => {
+      if (i.result === 'pass') stats.pass++;
+      else if (i.result === 'partial') stats.partial++;
+      else stats.fail++;
+    });
+    return stats;
+  }, [inspections]);
+
   const revenueChartData = {
-    labels: monthlyRevenue.map(m => m.month),
+    labels: monthlyRevenueData.length > 0 ? monthlyRevenueData.map(m => m.month) : ['暂无数据'],
     datasets: [
       {
         label: '月度营收(万元)',
-        data: monthlyRevenue.map(m => m.revenue / 10000),
+        data: monthlyRevenueData.length > 0 ? monthlyRevenueData.map(m => m.revenue / 10000) : [0],
         backgroundColor: 'rgba(30, 144, 255, 0.7)',
         borderColor: 'rgba(30, 144, 255, 1)',
         borderWidth: 1,
@@ -60,21 +108,23 @@ const Reports: React.FC = () => {
   };
 
   const categoryChartData = {
-    labels: categoryDistribution.map(c => c.category),
+    labels: categoryDistributionData.map(c => c.category),
     datasets: [
       {
-        data: categoryDistribution.map(c => c.count),
+        data: categoryDistributionData.map(c => c.count),
         backgroundColor: [
           'rgba(30, 144, 255, 0.8)',
           'rgba(34, 139, 34, 0.8)',
           'rgba(255, 215, 0, 0.8)',
           'rgba(147, 112, 219, 0.8)',
+          'rgba(255, 99, 132, 0.8)',
         ],
         borderColor: [
           'rgba(30, 144, 255, 1)',
           'rgba(34, 139, 34, 1)',
           'rgba(255, 215, 0, 1)',
           'rgba(147, 112, 219, 1)',
+          'rgba(255, 99, 132, 1)',
         ],
         borderWidth: 2,
       },
@@ -82,15 +132,16 @@ const Reports: React.FC = () => {
   };
 
   const ratingChartData = {
-    labels: ratingDistribution.map(r => `${r.rating}星`),
+    labels: ratingDistributionData.map(r => `${r.rating}星`),
     datasets: [
       {
-        data: ratingDistribution.map(r => r.count),
+        data: ratingDistributionData.map(r => r.count),
         backgroundColor: [
           'rgba(255, 215, 0, 0.8)',
           'rgba(255, 193, 7, 0.8)',
           'rgba(255, 152, 0, 0.8)',
           'rgba(255, 87, 34, 0.8)',
+          'rgba(76, 175, 80, 0.8)',
         ],
         borderColor: '#fff',
         borderWidth: 2,
@@ -102,7 +153,7 @@ const Reports: React.FC = () => {
     labels: ['合格', '部分合格', '不合格'],
     datasets: [
       {
-        data: [inspectionStats.pass, inspectionStats.partial, inspectionStats.fail],
+        data: [inspectionStatsData.pass, inspectionStatsData.partial, inspectionStatsData.fail],
         backgroundColor: [
           'rgba(76, 175, 80, 0.8)',
           'rgba(255, 193, 7, 0.8)',
@@ -232,20 +283,9 @@ const Reports: React.FC = () => {
   const handleBusinessDataSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const merchant = merchants.find(m => m.id === formData.merchantId);
-    const existingData = businessData.find(
-      b => b.merchantId === formData.merchantId && b.month === formData.month
-    );
     
-    if (existingData) {
-      updateBusinessData(existingData.id, {
-        revenue: parseFloat(formData.revenue),
-        customerCount: parseInt(formData.customerCount),
-        rentPaid: parseFloat(formData.rentPaid),
-        rentStatus: formData.rentStatus,
-        notes: formData.notes,
-      });
-    } else {
-      addBusinessData({
+    if (editingBusinessDataId) {
+      updateBusinessData(editingBusinessDataId, {
         merchantId: formData.merchantId,
         merchantName: merchant?.name || '',
         month: formData.month,
@@ -255,9 +295,35 @@ const Reports: React.FC = () => {
         rentStatus: formData.rentStatus,
         notes: formData.notes,
       });
+    } else {
+      const existingData = businessData.find(
+        b => b.merchantId === formData.merchantId && b.month === formData.month
+      );
+      
+      if (existingData) {
+        updateBusinessData(existingData.id, {
+          revenue: parseFloat(formData.revenue),
+          customerCount: parseInt(formData.customerCount),
+          rentPaid: parseFloat(formData.rentPaid),
+          rentStatus: formData.rentStatus,
+          notes: formData.notes,
+        });
+      } else {
+        addBusinessData({
+          merchantId: formData.merchantId,
+          merchantName: merchant?.name || '',
+          month: formData.month,
+          revenue: parseFloat(formData.revenue),
+          customerCount: parseInt(formData.customerCount),
+          rentPaid: parseFloat(formData.rentPaid),
+          rentStatus: formData.rentStatus,
+          notes: formData.notes,
+        });
+      }
     }
     
     setShowBusinessDataModal(false);
+    setEditingBusinessDataId(null);
     setFormData({
       merchantId: '',
       month: '',
@@ -270,6 +336,7 @@ const Reports: React.FC = () => {
   };
 
   const handleEditBusinessData = (data: BusinessData) => {
+    setEditingBusinessDataId(data.id);
     setFormData({
       merchantId: data.merchantId,
       month: data.month,
@@ -280,6 +347,10 @@ const Reports: React.FC = () => {
       notes: data.notes || '',
     });
     setShowBusinessDataModal(true);
+  };
+
+  const handleDeleteBusinessData = (id: string) => {
+    deleteBusinessData(id);
   };
 
   const statsCards = [
@@ -419,15 +490,15 @@ const Reports: React.FC = () => {
           <div className="mt-4 grid grid-cols-3 gap-4 text-center">
             <div className="p-3 bg-green-50 rounded-lg">
               <p className="text-sm text-green-600">合格</p>
-              <p className="text-xl font-bold text-green-700">{inspectionStats.pass}</p>
+              <p className="text-xl font-bold text-green-700">{inspectionStatsData.pass}</p>
             </div>
             <div className="p-3 bg-yellow-50 rounded-lg">
               <p className="text-sm text-yellow-600">部分合格</p>
-              <p className="text-xl font-bold text-yellow-700">{inspectionStats.partial}</p>
+              <p className="text-xl font-bold text-yellow-700">{inspectionStatsData.partial}</p>
             </div>
             <div className="p-3 bg-red-50 rounded-lg">
               <p className="text-sm text-red-600">不合格</p>
-              <p className="text-xl font-bold text-red-700">{inspectionStats.fail}</p>
+              <p className="text-xl font-bold text-red-700">{inspectionStatsData.fail}</p>
             </div>
           </div>
         </div>
@@ -509,6 +580,13 @@ const Reports: React.FC = () => {
                           title="编辑"
                         >
                           <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBusinessData(data.id)}
+                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -689,6 +767,7 @@ const Reports: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setShowBusinessDataModal(false);
+                    setEditingBusinessDataId(null);
                     setFormData({
                       merchantId: '',
                       month: '',

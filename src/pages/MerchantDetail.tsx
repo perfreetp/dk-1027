@@ -391,6 +391,17 @@ const MerchantDetail: React.FC = () => {
                         <p className="text-xs text-red-600">驳回原因: {rect.rejectionReason}</p>
                       </div>
                     )}
+                    {rect.attachmentUrls && rect.attachmentUrls.length > 0 && (
+                      <div className="mt-2 p-2 bg-gray-50 rounded">
+                        <p className="text-xs text-gray-600 mb-1">附件:</p>
+                        {rect.attachmentUrls.map((file, index) => (
+                          <p key={index} className="text-xs text-gray-700 flex items-center gap-1">
+                            <FileCheck className="w-3 h-3" />
+                            {file}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
