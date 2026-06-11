@@ -11,6 +11,7 @@ const Reports: React.FC = () => {
   const { merchants, licenses, inspections, reviews, rectifications, businessData, addBusinessData, updateBusinessData, deleteBusinessData } = useStore();
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState('2024-12-31');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showBusinessDataModal, setShowBusinessDataModal] = useState(false);
   const [selectedMerchantId, setSelectedMerchantId] = useState('');
   const [editingBusinessDataId, setEditingBusinessDataId] = useState<string | null>(null);
@@ -35,17 +36,70 @@ const Reports: React.FC = () => {
     notes: '',
   });
 
-  const rectificationRate = rectifications.length > 0
-    ? ((rectifications.filter(r => r.status === 'completed').length / rectifications.length) * 100).toFixed(0)
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    merchants.forEach(m => cats.add(m.category));
+    return Array.from(cats);
+  }, [merchants]);
+
+  const filteredMerchants = useMemo(() => {
+    return merchants.filter(m => {
+      if (categoryFilter === 'all') return true;
+      return m.category === categoryFilter;
+    });
+  }, [merchants, categoryFilter]);
+
+  const filteredMerchantIds = useMemo(() => {
+    return filteredMerchants.map(m => m.id);
+  }, [filteredMerchants]);
+
+  const filteredLicenses = useMemo(() => {
+    return licenses.filter(l => filteredMerchantIds.includes(l.merchantId));
+  }, [licenses, filteredMerchantIds]);
+
+  const filteredInspections = useMemo(() => {
+    return inspections.filter(i => {
+      if (!filteredMerchantIds.includes(i.merchantId)) return false;
+      const inspectionDate = new Date(i.inspectionDate);
+      return inspectionDate >= new Date(startDate) && inspectionDate <= new Date(endDate);
+    });
+  }, [inspections, filteredMerchantIds, startDate, endDate]);
+
+  const filteredReviews = useMemo(() => {
+    return reviews.filter(r => {
+      if (!filteredMerchantIds.includes(r.merchantId)) return false;
+      const reviewDate = new Date(r.reviewDate);
+      return reviewDate >= new Date(startDate) && reviewDate <= new Date(endDate);
+    });
+  }, [reviews, filteredMerchantIds, startDate, endDate]);
+
+  const filteredRectifications = useMemo(() => {
+    return rectifications.filter(r => {
+      if (!filteredMerchantIds.includes(r.merchantId)) return false;
+      const createdAt = new Date(r.createdAt);
+      return createdAt >= new Date(startDate) && createdAt <= new Date(endDate);
+    });
+  }, [rectifications, filteredMerchantIds, startDate, endDate]);
+
+  const filteredBusinessData = useMemo(() => {
+    return businessData.filter(b => {
+      if (!filteredMerchantIds.includes(b.merchantId)) return false;
+      const monthStart = new Date(b.month + '-01');
+      return monthStart >= new Date(startDate) && monthStart <= new Date(endDate);
+    });
+  }, [businessData, filteredMerchantIds, startDate, endDate]);
+
+  const rectificationRate = filteredRectifications.length > 0
+    ? ((filteredRectifications.filter(r => r.status === 'completed').length / filteredRectifications.length) * 100).toFixed(0)
     : '0';
 
-  const totalBusinessRevenue = businessData.reduce((sum, b) => sum + b.revenue, 0);
-  const totalCustomers = businessData.reduce((sum, b) => sum + b.customerCount, 0);
-  const totalRentPaid = businessData.reduce((sum, b) => sum + b.rentPaid, 0);
+  const totalBusinessRevenue = filteredBusinessData.reduce((sum, b) => sum + b.revenue, 0);
+  const totalCustomers = filteredBusinessData.reduce((sum, b) => sum + b.customerCount, 0);
+  const totalRentPaid = filteredBusinessData.reduce((sum, b) => sum + b.rentPaid, 0);
 
   const monthlyRevenueData = useMemo(() => {
     const months: { [key: string]: number } = {};
-    businessData.forEach(b => {
+    filteredBusinessData.forEach(b => {
       if (months[b.month]) {
         months[b.month] += b.revenue;
       } else {
@@ -57,7 +111,7 @@ const Reports: React.FC = () => {
       month: month.replace('-', '年') + '月',
       revenue: months[month]
     }));
-  }, [businessData]);
+  }, [filteredBusinessData]);
 
   const avgMonthlyRevenue = monthlyRevenueData.length > 0
     ? (totalBusinessRevenue / monthlyRevenueData.length / 10000).toFixed(1)
@@ -65,7 +119,7 @@ const Reports: React.FC = () => {
 
   const categoryDistributionData = useMemo(() => {
     const categories: { [key: string]: number } = {};
-    merchants.forEach(m => {
+    filteredMerchants.forEach(m => {
       if (categories[m.category]) {
         categories[m.category]++;
       } else {
@@ -73,25 +127,25 @@ const Reports: React.FC = () => {
       }
     });
     return Object.entries(categories).map(([category, count]) => ({ category, count }));
-  }, [merchants]);
+  }, [filteredMerchants]);
 
   const ratingDistributionData = useMemo(() => {
     const ratings: { [key: string]: number } = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
-    merchants.forEach(m => {
+    filteredMerchants.forEach(m => {
       ratings[m.starLevel]++;
     });
     return Object.entries(ratings).map(([rating, count]) => ({ rating: parseInt(rating), count }));
-  }, [merchants]);
+  }, [filteredMerchants]);
 
   const inspectionStatsData = useMemo(() => {
     const stats = { pass: 0, partial: 0, fail: 0 };
-    inspections.forEach(i => {
+    filteredInspections.forEach(i => {
       if (i.result === 'pass') stats.pass++;
       else if (i.result === 'partial') stats.partial++;
       else stats.fail++;
     });
     return stats;
-  }, [inspections]);
+  }, [filteredInspections]);
 
   const revenueChartData = {
     labels: monthlyRevenueData.length > 0 ? monthlyRevenueData.map(m => m.month) : ['暂无数据'],
@@ -195,19 +249,24 @@ const Reports: React.FC = () => {
 
   const exportData = () => {
     const data = {
+      filter: {
+        startDate,
+        endDate,
+        category: categoryFilter === 'all' ? '全部类别' : categoryFilter,
+      },
       summary: {
-        merchants: merchants.length,
-        licenses: licenses.length,
-        inspections: inspections.length,
-        reviews: reviews.length,
-        rectifications: rectifications.length,
-        avgRating: reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0',
+        merchants: filteredMerchants.length,
+        licenses: filteredLicenses.length,
+        inspections: filteredInspections.length,
+        reviews: filteredReviews.length,
+        rectifications: filteredRectifications.length,
+        avgRating: filteredReviews.length > 0 ? (filteredReviews.reduce((sum, r) => sum + r.rating, 0) / filteredReviews.length).toFixed(1) : '0',
         rectificationRate: `${rectificationRate}%`,
         totalRevenue: `${(totalBusinessRevenue / 10000).toFixed(0)}万元`,
         totalCustomers: totalCustomers,
         totalRentPaid: `${(totalRentPaid / 10000).toFixed(0)}万元`,
       },
-      merchants: merchants.map(m => ({
+      merchants: filteredMerchants.map(m => ({
         id: m.id,
         name: m.name,
         category: m.category,
@@ -215,7 +274,7 @@ const Reports: React.FC = () => {
         starLevel: m.starLevel,
         isBlacklisted: m.isBlacklisted,
       })),
-      businessData: businessData.map(b => ({
+      businessData: filteredBusinessData.map(b => ({
         id: b.id,
         merchantId: b.merchantId,
         merchantName: b.merchantName,
@@ -226,7 +285,7 @@ const Reports: React.FC = () => {
         rentStatus: b.rentStatus,
         notes: b.notes,
       })),
-      licenses: licenses.map(l => ({
+      licenses: filteredLicenses.map(l => ({
         id: l.id,
         merchantId: l.merchantId,
         merchantName: l.merchantName,
@@ -236,7 +295,7 @@ const Reports: React.FC = () => {
         expireDate: l.expireDate,
         status: l.status,
       })),
-      inspections: inspections.map(i => ({
+      inspections: filteredInspections.map(i => ({
         id: i.id,
         merchantId: i.merchantId,
         merchantName: i.merchantName,
@@ -246,7 +305,7 @@ const Reports: React.FC = () => {
         result: i.result,
         issues: i.issues,
       })),
-      reviews: reviews.map(r => ({
+      reviews: filteredReviews.map(r => ({
         id: r.id,
         merchantId: r.merchantId,
         merchantName: r.merchantName,
@@ -257,7 +316,7 @@ const Reports: React.FC = () => {
         reviewDate: r.reviewDate,
         status: r.status,
       })),
-      rectifications: rectifications.map(r => ({
+      rectifications: filteredRectifications.map(r => ({
         id: r.id,
         merchantId: r.merchantId,
         merchantName: r.merchantName,
@@ -275,7 +334,7 @@ const Reports: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `监管台账_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `监管台账_${new Date().toISOString().split('T')[0]}_${categoryFilter === 'all' ? '全部' : categoryFilter}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -356,25 +415,25 @@ const Reports: React.FC = () => {
   const statsCards = [
     {
       title: '商户总数',
-      value: merchants.length,
+      value: filteredMerchants.length,
       icon: Building2,
       color: 'bg-blue-500',
     },
     {
       title: '证照总数',
-      value: licenses.length,
+      value: filteredLicenses.length,
       icon: FileCheck,
       color: 'bg-green-500',
     },
     {
       title: '检查次数',
-      value: inspections.length,
+      value: filteredInspections.length,
       icon: AlertTriangle,
       color: 'bg-orange-500',
     },
     {
       title: '游客评价',
-      value: reviews.length,
+      value: filteredReviews.length,
       icon: Star,
       color: 'bg-yellow-500',
     },
@@ -392,10 +451,12 @@ const Reports: React.FC = () => {
     },
   ];
 
-  const filteredBusinessData = businessData.filter(b => {
-    if (!selectedMerchantId) return true;
-    return b.merchantId === selectedMerchantId;
-  });
+  const tableFilteredBusinessData = useMemo(() => {
+    return filteredBusinessData.filter(b => {
+      if (!selectedMerchantId) return true;
+      return b.merchantId === selectedMerchantId;
+    });
+  }, [filteredBusinessData, selectedMerchantId]);
 
   return (
     <div className="space-y-6">
@@ -405,6 +466,16 @@ const Reports: React.FC = () => {
           <p className="text-gray-500 mt-1">汇总分析商户经营数据，导出监管台账</p>
         </div>
         <div className="flex items-center gap-4">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">全部类别</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-500" />
             <input
@@ -543,7 +614,7 @@ const Reports: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredBusinessData.map((data) => (
+                {tableFilteredBusinessData.map((data) => (
                   <tr key={data.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-medium text-gray-800">{data.merchantName}</p>
@@ -592,7 +663,7 @@ const Reports: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {filteredBusinessData.length === 0 && (
+                {tableFilteredBusinessData.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center">
                       <Building2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -623,11 +694,11 @@ const Reports: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {merchants.map((merchant) => {
-                const merchantLicenses = licenses.filter(l => l.merchantId === merchant.id);
-                const merchantInspections = inspections.filter(i => i.merchantId === merchant.id);
-                const merchantReviews = reviews.filter(r => r.merchantId === merchant.id);
-                const merchantRectifications = rectifications.filter(r => r.merchantId === merchant.id);
+              {filteredMerchants.map((merchant) => {
+                const merchantLicenses = filteredLicenses.filter(l => l.merchantId === merchant.id);
+                const merchantInspections = filteredInspections.filter(i => i.merchantId === merchant.id);
+                const merchantReviews = filteredReviews.filter(r => r.merchantId === merchant.id);
+                const merchantRectifications = filteredRectifications.filter(r => r.merchantId === merchant.id);
                 
                 return (
                   <tr key={merchant.id} className="hover:bg-gray-50 transition-colors">

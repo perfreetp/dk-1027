@@ -1,27 +1,211 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { ArrowLeft, Star, Phone, MapPin, Clock, AlertCircle, Calendar, FileCheck, Tag, Award, User, AlertTriangle } from 'lucide-react';
+import { 
+  ArrowLeft, Star, Phone, MapPin, Clock, AlertCircle, Calendar, FileCheck, Tag, Award, User, 
+  AlertTriangle, TrendingUp, TrendingDown, DollarSign, Users, CheckCircle, XCircle, 
+  Edit, Activity, FileText, Paperclip
+} from 'lucide-react';
 
 const MerchantDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { merchants, licenses, prices, inspections, reviews, rectifications } = useStore();
+  const { merchants, licenses, prices, inspections, reviews, rectifications, businessData } = useStore();
 
   const merchant = merchants.find((m) => m.id === id);
+
   const merchantLicenses = licenses.filter((l) => l.merchantId === id);
   const merchantPrices = prices.filter((p) => p.merchantId === id);
   const merchantInspections = inspections.filter((i) => i.merchantId === id);
   const merchantReviews = reviews.filter((r) => r.merchantId === id);
   const merchantRectifications = rectifications.filter((r) => r.merchantId === id);
+  const merchantBusinessData = businessData.filter((b) => b.merchantId === id);
 
   if (!merchant) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">商户不存在</p>
+      <div className="flex flex-col items-center justify-center h-64">
+        <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
+        <p className="text-gray-500 mb-4">商户不存在或已被删除</p>
+        <button
+          onClick={() => navigate('/merchants')}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          返回商户列表
+        </button>
       </div>
     );
   }
+
+  const timelineEvents = useMemo(() => {
+    const events: Array<{
+      date: string;
+      type: string;
+      title: string;
+      description: string;
+      status?: string;
+      icon: React.ReactNode;
+      color: string;
+      data?: any;
+    }> = [];
+
+    merchantLicenses.forEach(l => {
+      events.push({
+        date: l.issueDate,
+        type: 'license',
+        title: `${l.type} 发证`,
+        description: `证照编号: ${l.number}, 有效期至 ${l.expireDate}`,
+        status: l.status,
+        icon: <FileCheck className="w-4 h-4" />,
+        color: l.status === 'expired' ? 'red' : l.status === 'expiring' ? 'orange' : 'green',
+        data: l,
+      });
+    });
+
+    merchantInspections.forEach(i => {
+      events.push({
+        date: i.inspectionDate,
+        type: 'inspection',
+        title: `${i.type === 'food' ? '食品安全检查' : i.type === 'fire' ? '消防安全检查' : '日常巡检'}`,
+        description: i.issues.length > 0 ? `发现问题: ${i.issues.join(', ')}` : '检查合格',
+        status: i.result,
+        icon: <Activity className="w-4 h-4" />,
+        color: i.result === 'fail' ? 'red' : i.result === 'partial' ? 'orange' : 'green',
+        data: i,
+      });
+    });
+
+    merchantReviews.forEach(r => {
+      events.push({
+        date: r.reviewDate,
+        type: 'review',
+        title: r.type === 'complaint' ? '游客投诉' : '游客评价',
+        description: `${r.reviewer}: ${r.content}`,
+        status: r.status,
+        icon: r.type === 'complaint' ? <AlertTriangle className="w-4 h-4" /> : <Star className="w-4 h-4" />,
+        color: r.type === 'complaint' ? 'red' : r.rating >= 4 ? 'green' : r.rating >= 3 ? 'blue' : 'orange',
+        data: r,
+      });
+    });
+
+    merchantRectifications.forEach(r => {
+      events.push({
+        date: r.createdAt,
+        type: 'rectification',
+        title: `整改任务: ${r.title}`,
+        description: r.description,
+        status: r.status,
+        icon: <AlertTriangle className="w-4 h-4" />,
+        color: r.status === 'completed' ? 'green' : r.status === 'rejected' ? 'red' : 'orange',
+        data: r,
+      });
+      if (r.completedAt) {
+        events.push({
+          date: r.completedAt,
+          type: 'rectification_complete',
+          title: `整改完成: ${r.title}`,
+          description: r.remark || '整改已通过复查',
+          status: 'completed',
+          icon: <CheckCircle className="w-4 h-4" />,
+          color: 'green',
+          data: r,
+        });
+      }
+    });
+
+    merchantBusinessData.forEach(b => {
+      events.push({
+        date: b.month.replace('-', '') + '01',
+        type: 'business',
+        title: `${b.month.replace('-', '年')}月 经营数据`,
+        description: `营业额: ¥${b.revenue.toLocaleString()}, 客流量: ${b.customerCount.toLocaleString()}人`,
+        status: b.rentStatus,
+        icon: <DollarSign className="w-4 h-4" />,
+        color: b.rentStatus === 'paid' ? 'green' : b.rentStatus === 'partial' ? 'orange' : 'red',
+        data: b,
+      });
+    });
+
+    return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [merchantLicenses, merchantInspections, merchantReviews, merchantRectifications, merchantBusinessData]);
+
+  const risks = useMemo(() => {
+    const riskList: Array<{ level: 'high' | 'medium' | 'low'; title: string; description: string }> = [];
+    
+    const expiredLicenses = merchantLicenses.filter(l => l.status === 'expired');
+    if (expiredLicenses.length > 0) {
+      riskList.push({ level: 'high', title: '证照过期', description: `${expiredLicenses.length}个证照已过期，需立即处理` });
+    }
+    
+    const expiringLicenses = merchantLicenses.filter(l => l.status === 'expiring');
+    if (expiringLicenses.length > 0) {
+      riskList.push({ level: 'medium', title: '证照即将到期', description: `${expiringLicenses.length}个证照即将到期` });
+    }
+    
+    const pendingRectifications = merchantRectifications.filter(r => r.status !== 'completed');
+    if (pendingRectifications.length > 0) {
+      riskList.push({ level: 'high', title: '待完成整改', description: `${pendingRectifications.length}个整改任务待处理` });
+    }
+    
+    const pendingComplaints = merchantReviews.filter(r => r.type === 'complaint' && r.status !== 'resolved');
+    if (pendingComplaints.length > 0) {
+      riskList.push({ level: 'medium', title: '待处理投诉', description: `${pendingComplaints.length}条投诉待处理` });
+    }
+    
+    const overdueRent = merchantBusinessData.filter(b => b.rentStatus === 'unpaid');
+    if (overdueRent.length > 0) {
+      riskList.push({ level: 'high', title: '租金欠缴', description: `${overdueRent.length}个月租金未缴纳` });
+    }
+    
+    const failedInspections = merchantInspections.filter(i => i.result === 'fail');
+    if (failedInspections.length > 0) {
+      riskList.push({ level: 'high', title: '检查不合格', description: `${failedInspections.length}次检查不合格` });
+    }
+    
+    if (merchant.isBlacklisted) {
+      riskList.push({ level: 'high', title: '黑名单商户', description: '该商户已被列入黑名单' });
+    }
+    
+    return riskList;
+  }, [merchantLicenses, merchantRectifications, merchantReviews, merchantBusinessData, merchantInspections, merchant]);
+
+  const pendingTasks = useMemo(() => {
+    const tasks: Array<{ title: string; deadline?: string; type: string }> = [];
+    
+    expiringLicenses.forEach(l => {
+      const days = Math.ceil((new Date(l.expireDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+      if (days <= 30) {
+        tasks.push({ title: `办理${l.type}续期`, deadline: l.expireDate, type: 'license' });
+      }
+    });
+    
+    merchantRectifications.filter(r => r.status !== 'completed').forEach(r => {
+      tasks.push({ title: r.title, deadline: r.deadline, type: 'rectification' });
+    });
+    
+    merchantReviews.filter(r => r.type === 'complaint' && r.status !== 'resolved').forEach(r => {
+      tasks.push({ title: `处理${r.reviewer}的投诉`, deadline: r.reviewDate, type: 'complaint' });
+    });
+    
+    return tasks;
+  }, [merchantLicenses, merchantRectifications, merchantReviews]);
+
+  const businessTrend = useMemo(() => {
+    const sortedData = merchantBusinessData.sort((a, b) => a.month.localeCompare(b.month));
+    if (sortedData.length < 2) return null;
+    
+    const latest = sortedData[sortedData.length - 1];
+    const previous = sortedData[sortedData.length - 2];
+    
+    const revenueChange = ((latest.revenue - previous.revenue) / previous.revenue * 100).toFixed(1);
+    const customerChange = ((latest.customerCount - previous.customerCount) / previous.customerCount * 100).toFixed(1);
+    
+    return {
+      revenueChange: parseFloat(revenueChange),
+      customerChange: parseFloat(customerChange),
+      latestRevenue: latest.revenue,
+      latestCustomers: latest.customerCount,
+    };
+  }, [merchantBusinessData]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -92,6 +276,8 @@ const MerchantDetail: React.FC = () => {
     ? (merchantReviews.reduce((sum, r) => sum + r.rating, 0) / merchantReviews.length).toFixed(1)
     : '暂无';
 
+  const expiringLicenses = merchantLicenses.filter(l => l.status === 'expiring');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -105,8 +291,9 @@ const MerchantDetail: React.FC = () => {
         <div className="flex-1" />
         <button
           onClick={() => navigate(`/merchants/${id}/edit`)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
+          <Edit className="w-4 h-4" />
           编辑商户
         </button>
       </div>
@@ -133,8 +320,169 @@ const MerchantDetail: React.FC = () => {
         </div>
       </div>
 
+      {risks.length > 0 && (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-600" />
+            风险提示
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {risks.map((risk, index) => (
+              <div key={index} className={`p-4 rounded-lg border ${
+                risk.level === 'high' ? 'bg-red-50 border-red-200' :
+                risk.level === 'medium' ? 'bg-orange-50 border-orange-200' :
+                'bg-blue-50 border-blue-200'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className={`w-4 h-4 ${
+                    risk.level === 'high' ? 'text-red-600' :
+                    risk.level === 'medium' ? 'text-orange-600' :
+                    'text-blue-600'
+                  }`} />
+                  <span className={`font-medium ${
+                    risk.level === 'high' ? 'text-red-700' :
+                    risk.level === 'medium' ? 'text-orange-700' :
+                    'text-blue-700'
+                  }`}>{risk.title}</span>
+                </div>
+                <p className={`text-sm ${
+                  risk.level === 'high' ? 'text-red-600' :
+                  risk.level === 'medium' ? 'text-orange-600' :
+                  'text-blue-600'
+                }`}>{risk.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pendingTasks.length > 0 && (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-blue-600" />
+            待办事项
+          </h2>
+          <div className="space-y-3">
+            {pendingTasks.map((task, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    task.type === 'license' ? 'bg-orange-100' :
+                    task.type === 'rectification' ? 'bg-red-100' :
+                    'bg-yellow-100'
+                  }`}>
+                    {task.type === 'license' ? <FileCheck className="w-4 h-4 text-orange-600" /> :
+                     task.type === 'rectification' ? <AlertTriangle className="w-4 h-4 text-red-600" /> :
+                     <AlertCircle className="w-4 h-4 text-yellow-600" />}
+                  </div>
+                  <span className="font-medium text-gray-800">{task.title}</span>
+                </div>
+                {task.deadline && (
+                  <span className="text-sm text-gray-500">截止: {task.deadline}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {businessTrend && (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-green-600" />
+            经营变化趋势
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500 mb-1">最新营业额</p>
+              <p className="text-xl font-bold text-gray-800">¥{businessTrend.latestRevenue.toLocaleString()}</p>
+              <div className={`flex items-center gap-1 mt-2 text-sm ${
+                businessTrend.revenueChange >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {businessTrend.revenueChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                <span>{businessTrend.revenueChange >= 0 ? '+' : ''}{businessTrend.revenueChange}%</span>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500 mb-1">最新客流量</p>
+              <p className="text-xl font-bold text-gray-800">{businessTrend.latestCustomers.toLocaleString()}人</p>
+              <div className={`flex items-center gap-1 mt-2 text-sm ${
+                businessTrend.customerChange >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {businessTrend.customerChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                <span>{businessTrend.customerChange >= 0 ? '+' : ''}{businessTrend.customerChange}%</span>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500 mb-1">平均评分</p>
+              <p className="text-xl font-bold text-gray-800">{avgRating}</p>
+              <div className="flex items-center gap-1 mt-2">
+                {avgRating !== '暂无' && renderStars(avgRating)}
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500 mb-1">租金状态</p>
+              <div className="mt-2">{getRentStatusBadge(merchant.rentStatus)}</div>
+              <p className="text-sm text-gray-500 mt-2">¥{merchant.rentAmount.toLocaleString()}/月</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-blue-600" />
+              经营画像时间线
+            </h2>
+            {timelineEvents.length > 0 ? (
+              <div className="relative">
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+                <div className="space-y-4">
+                  {timelineEvents.slice(0, 20).map((event, index) => (
+                    <div key={index} className="relative pl-10">
+                      <div className={`absolute left-2 w-4 h-4 rounded-full ${
+                        event.color === 'green' ? 'bg-green-500' :
+                        event.color === 'red' ? 'bg-red-500' :
+                        event.color === 'orange' ? 'bg-orange-500' :
+                        'bg-blue-500'
+                      }`} />
+                      <div className={`p-4 rounded-lg ${
+                        event.color === 'green' ? 'bg-green-50' :
+                        event.color === 'red' ? 'bg-red-50' :
+                        event.color === 'orange' ? 'bg-orange-50' :
+                        'bg-blue-50'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`${
+                              event.color === 'green' ? 'text-green-600' :
+                              event.color === 'red' ? 'text-red-600' :
+                              event.color === 'orange' ? 'text-orange-600' :
+                              'text-blue-600'
+                            }`}>{event.icon}</span>
+                            <span className="font-medium text-gray-800">{event.title}</span>
+                          </div>
+                          <span className="text-xs text-gray-500">{event.date}</span>
+                        </div>
+                        <p className="text-sm text-gray-600">{event.description}</p>
+                        {event.data?.attachmentUrls && event.data.attachmentUrls.length > 0 && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <Paperclip className="w-3 h-3 text-gray-400" />
+                            <span className="text-xs text-gray-500">{event.data.attachmentUrls.join(', ')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-center text-gray-400 py-8">暂无经营记录</p>
+            )}
+          </div>
+
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <User className="w-5 h-5 text-blue-600" />
@@ -207,163 +555,61 @@ const MerchantDetail: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
 
+        <div className="space-y-6">
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <FileCheck className="w-5 h-5 text-blue-600" />
-              证照信息
+              证照信息 ({merchantLicenses.length})
             </h2>
             {merchantLicenses.length > 0 ? (
               <div className="space-y-3">
                 {merchantLicenses.map((license) => (
-                  <div key={license.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div key={license.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-800">{license.type}</p>
                       <p className="text-sm text-gray-500">编号: {license.number}</p>
-                      <p className="text-xs text-gray-400">到期时间: {license.expireDate}</p>
+                      <p className="text-xs text-gray-400">到期: {license.expireDate}</p>
                     </div>
                     {getLicenseStatusBadge(license.status)}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-400 py-8">暂无证照信息</p>
+              <p className="text-center text-gray-400 py-4">暂无证照信息</p>
             )}
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <Tag className="w-5 h-5 text-blue-600" />
-              价格备案
+              价格备案 ({merchantPrices.length})
             </h2>
             {merchantPrices.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">商品名称</th>
-                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">原价</th>
-                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">现价</th>
-                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">单位</th>
-                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">状态</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {merchantPrices.map((price) => (
-                      <tr key={price.id}>
-                        <td className="px-4 py-3 text-sm text-gray-800">{price.productName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">¥{price.originalPrice}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800">¥{price.currentPrice}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{price.unit}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            price.status === 'approved' ? 'bg-green-100 text-green-700' :
-                            price.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {price.status === 'approved' ? '已审核' :
-                             price.status === 'pending' ? '待审核' : '已拒绝'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-center text-gray-400 py-8">暂无价格备案信息</p>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5 text-blue-600" />
-              游客评价
-            </h2>
-            <div className="text-center mb-4">
-              <p className="text-4xl font-bold text-blue-600">{avgRating}</p>
-              {avgRating !== '暂无' && renderStars(avgRating)}
-              <p className="text-sm text-gray-500 mt-1">{merchantReviews.length} 条评价</p>
-            </div>
-            {merchantReviews.slice(0, 3).map((review) => {
-              const relatedRectification = merchantRectifications.find(r => r.sourceId === review.id);
-              return (
-                <div key={review.id} className="p-3 bg-gray-50 rounded-lg mb-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800">{review.reviewer}</span>
-                      {review.type === 'complaint' && (
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">投诉</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-400">{review.reviewDate}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">{review.content}</p>
-                  {review.reply && (
-                    <div className="mt-2 p-2 bg-white rounded text-xs text-blue-600">
-                      回复: {review.reply}
-                    </div>
-                  )}
-                  {relatedRectification && (
-                    <div className="mt-2 p-2 bg-purple-50 rounded text-xs">
-                      <span className="text-purple-600">
-                        整改进度: {
-                          relatedRectification.status === 'pending' ? '待处理' :
-                          relatedRectification.status === 'processing' ? '处理中' :
-                          relatedRectification.status === 'reviewing' ? '待复查' :
-                          relatedRectification.status === 'completed' ? '已完成' : '已驳回'
-                        }
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">检查记录</h2>
-            {merchantInspections.length > 0 ? (
-              <div className="space-y-3">
-                {merchantInspections.map((inspection) => (
-                  <div key={inspection.id} className="p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-800">
-                        {inspection.type === 'food' ? '食品安全检查' :
-                         inspection.type === 'fire' ? '消防安全检查' : '日常巡检'}
-                      </span>
-                      {getInspectionResultBadge(inspection.result)}
-                    </div>
-                    <p className="text-xs text-gray-500">检查时间: {inspection.inspectionDate}</p>
-                    <p className="text-xs text-gray-500">检查人: {inspection.inspector}</p>
-                    {inspection.issues.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs text-red-600 mb-1">发现问题:</p>
-                        {inspection.issues.map((issue, index) => (
-                          <p key={index} className="text-xs text-gray-600">- {issue}</p>
-                        ))}
-                      </div>
-                    )}
+              <div className="space-y-2">
+                {merchantPrices.slice(0, 5).map((price) => (
+                  <div key={price.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span className="text-sm text-gray-800">{price.productName}</span>
+                    <span className="text-sm font-medium text-gray-800">¥{price.currentPrice}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-400 py-8">暂无检查记录</p>
+              <p className="text-center text-gray-400 py-4">暂无价格备案</p>
             )}
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
-              整改任务
+              整改任务 ({merchantRectifications.length})
             </h2>
             {merchantRectifications.length > 0 ? (
               <div className="space-y-3">
                 {merchantRectifications.map((rect) => (
                   <div key={rect.id} className="p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-gray-800">{rect.title}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         rect.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
@@ -378,35 +624,37 @@ const MerchantDetail: React.FC = () => {
                          rect.status === 'completed' ? '已完成' : '已驳回'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500">截止日期: {rect.deadline}</p>
-                    <p className="text-xs text-gray-500">负责人: {rect.assignee || '未分配'}</p>
-                    {rect.sourceType === 'complaint' && (
-                      <p className="text-xs text-red-600 mt-1">来源: 游客投诉</p>
-                    )}
-                    {rect.sourceType === 'inspection' && (
-                      <p className="text-xs text-orange-600 mt-1">来源: 检查发现</p>
-                    )}
+                    <p className="text-xs text-gray-500">截止: {rect.deadline}</p>
                     {rect.rejectionReason && (
-                      <div className="mt-2 p-2 bg-red-50 rounded">
-                        <p className="text-xs text-red-600">驳回原因: {rect.rejectionReason}</p>
-                      </div>
-                    )}
-                    {rect.attachmentUrls && rect.attachmentUrls.length > 0 && (
-                      <div className="mt-2 p-2 bg-gray-50 rounded">
-                        <p className="text-xs text-gray-600 mb-1">附件:</p>
-                        {rect.attachmentUrls.map((file, index) => (
-                          <p key={index} className="text-xs text-gray-700 flex items-center gap-1">
-                            <FileCheck className="w-3 h-3" />
-                            {file}
-                          </p>
-                        ))}
-                      </div>
+                      <p className="text-xs text-red-600 mt-1">驳回: {rect.rejectionReason}</p>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-400 py-8">暂无整改任务</p>
+              <p className="text-center text-gray-400 py-4">暂无整改任务</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              经营数据 ({merchantBusinessData.length}月)
+            </h2>
+            {merchantBusinessData.length > 0 ? (
+              <div className="space-y-2">
+                {merchantBusinessData.slice(-6).reverse().map((data) => (
+                  <div key={data.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span className="text-sm text-gray-600">{data.month}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-800">¥{data.revenue.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">{data.customerCount.toLocaleString()}人</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400 py-4">暂无经营数据</p>
             )}
           </div>
         </div>

@@ -134,9 +134,36 @@ export const useStore = create<Store>((set, get) => ({
   },
   
   updateMerchant: (id, data) => set((state) => {
+    const merchant = state.merchants.find(m => m.id === id);
+    const oldName = merchant?.name;
+    const newName = data.name;
+    const nameChanged = newName && oldName !== newName;
+    
     const newState = {
       merchants: state.merchants.map(m => m.id === id ? { ...m, ...data } : m),
     };
+    
+    if (nameChanged) {
+      newState.licenses = state.licenses.map(l => 
+        l.merchantId === id ? { ...l, merchantName: newName } : l
+      );
+      newState.prices = state.prices.map(p => 
+        p.merchantId === id ? { ...p, merchantName: newName } : p
+      );
+      newState.inspections = state.inspections.map(i => 
+        i.merchantId === id ? { ...i, merchantName: newName } : i
+      );
+      newState.reviews = state.reviews.map(r => 
+        r.merchantId === id ? { ...r, merchantName: newName } : r
+      );
+      newState.rectifications = state.rectifications.map(r => 
+        r.merchantId === id ? { ...r, merchantName: newName } : r
+      );
+      newState.businessData = state.businessData.map(b => 
+        b.merchantId === id ? { ...b, merchantName: newName } : b
+      );
+    }
+    
     saveToStorage({ ...state, ...newState });
     return newState;
   }),
