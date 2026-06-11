@@ -1,16 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { 
   ArrowLeft, Star, Phone, MapPin, Clock, AlertCircle, Calendar, FileCheck, Tag, Award, User, 
   AlertTriangle, TrendingUp, TrendingDown, DollarSign, Users, CheckCircle, XCircle, 
-  Edit, Activity, FileText, Paperclip
+  Edit, Activity, FileText, Paperclip, ChevronDown, ChevronUp, Filter, X
 } from 'lucide-react';
+
+type TimelineFilter = 'all' | 'license' | 'inspection' | 'review' | 'rectification' | 'business';
 
 const MerchantDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { merchants, licenses, prices, inspections, reviews, rectifications, businessData } = useStore();
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
 
   const merchant = merchants.find((m) => m.id === id);
 
@@ -38,6 +42,7 @@ const MerchantDetail: React.FC = () => {
 
   const timelineEvents = useMemo(() => {
     const events: Array<{
+      id: string;
       date: string;
       type: string;
       title: string;
@@ -50,6 +55,7 @@ const MerchantDetail: React.FC = () => {
 
     merchantLicenses.forEach(l => {
       events.push({
+        id: `license-${l.id}`,
         date: l.issueDate,
         type: 'license',
         title: `${l.type} 发证`,
@@ -63,6 +69,7 @@ const MerchantDetail: React.FC = () => {
 
     merchantInspections.forEach(i => {
       events.push({
+        id: `inspection-${i.id}`,
         date: i.inspectionDate,
         type: 'inspection',
         title: `${i.type === 'food' ? '食品安全检查' : i.type === 'fire' ? '消防安全检查' : '日常巡检'}`,
@@ -76,6 +83,7 @@ const MerchantDetail: React.FC = () => {
 
     merchantReviews.forEach(r => {
       events.push({
+        id: `review-${r.id}`,
         date: r.reviewDate,
         type: 'review',
         title: r.type === 'complaint' ? '游客投诉' : '游客评价',
@@ -89,6 +97,7 @@ const MerchantDetail: React.FC = () => {
 
     merchantRectifications.forEach(r => {
       events.push({
+        id: `rectification-${r.id}`,
         date: r.createdAt,
         type: 'rectification',
         title: `整改任务: ${r.title}`,
@@ -100,8 +109,9 @@ const MerchantDetail: React.FC = () => {
       });
       if (r.completedAt) {
         events.push({
+          id: `rectification-complete-${r.id}`,
           date: r.completedAt,
-          type: 'rectification_complete',
+          type: 'rectification',
           title: `整改完成: ${r.title}`,
           description: r.remark || '整改已通过复查',
           status: 'completed',
@@ -114,6 +124,7 @@ const MerchantDetail: React.FC = () => {
 
     merchantBusinessData.forEach(b => {
       events.push({
+        id: `business-${b.id}`,
         date: b.month.replace('-', '') + '01',
         type: 'business',
         title: `${b.month.replace('-', '年')}月 经营数据`,
@@ -127,6 +138,11 @@ const MerchantDetail: React.FC = () => {
 
     return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [merchantLicenses, merchantInspections, merchantReviews, merchantRectifications, merchantBusinessData]);
+
+  const filteredTimelineEvents = useMemo(() => {
+    if (timelineFilter === 'all') return timelineEvents;
+    return timelineEvents.filter(e => e.type === timelineFilter);
+  }, [timelineEvents, timelineFilter]);
 
   const risks = useMemo(() => {
     const riskList: Array<{ level: 'high' | 'medium' | 'low'; title: string; description: string }> = [];
@@ -171,7 +187,7 @@ const MerchantDetail: React.FC = () => {
   const pendingTasks = useMemo(() => {
     const tasks: Array<{ title: string; deadline?: string; type: string }> = [];
     
-    expiringLicenses.forEach(l => {
+    merchantLicenses.filter(l => l.status === 'expiring').forEach(l => {
       const days = Math.ceil((new Date(l.expireDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
       if (days <= 30) {
         tasks.push({ title: `办理${l.type}续期`, deadline: l.expireDate, type: 'license' });
@@ -196,8 +212,8 @@ const MerchantDetail: React.FC = () => {
     const latest = sortedData[sortedData.length - 1];
     const previous = sortedData[sortedData.length - 2];
     
-    const revenueChange = ((latest.revenue - previous.revenue) / previous.revenue * 100).toFixed(1);
-    const customerChange = ((latest.customerCount - previous.customerCount) / previous.customerCount * 100).toFixed(1);
+    const revenueChange = previous.revenue > 0 ? ((latest.revenue - previous.revenue) / previous.revenue * 100).toFixed(1) : '0';
+    const customerChange = previous.customerCount > 0 ? ((latest.customerCount - previous.customerCount) / previous.customerCount * 100).toFixed(1) : '0';
     
     return {
       revenueChange: parseFloat(revenueChange),
@@ -224,10 +240,10 @@ const MerchantDetail: React.FC = () => {
     switch (status) {
       case 'paid':
         return <span className="text-green-600 font-medium">已缴纳</span>;
-      case 'pending':
-        return <span className="text-yellow-600 font-medium">待缴纳</span>;
-      case 'overdue':
-        return <span className="text-red-600 font-medium">已逾期</span>;
+      case 'partial':
+        return <span className="text-yellow-600 font-medium">部分缴纳</span>;
+      case 'unpaid':
+        return <span className="text-red-600 font-medium">未缴纳</span>;
       default:
         return null;
     }
@@ -246,28 +262,318 @@ const MerchantDetail: React.FC = () => {
     }
   };
 
-  const getInspectionResultBadge = (result: string) => {
-    switch (result) {
-      case 'pass':
-        return <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">合格</span>;
-      case 'partial':
-        return <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">部分合格</span>;
-      case 'fail':
-        return <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">不合格</span>;
+  const getRectificationStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">待处理</span>;
+      case 'processing':
+        return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">处理中</span>;
+      case 'reviewing':
+        return <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">待复查</span>;
+      case 'completed':
+        return <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">已完成</span>;
+      case 'rejected':
+        return <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">已驳回</span>;
       default:
         return null;
     }
   };
 
-  const renderStars = (level: string) => {
+  const renderStars = (level: string | number) => {
+    const num = typeof level === 'string' ? parseFloat(level) : level;
     return (
       <div className="flex">
         {Array.from({ length: 5 }).map((_, i) => (
           <Star
             key={i}
-            className={`w-5 h-5 ${i < parseInt(level) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
+            className={`w-5 h-5 ${i < Math.round(num) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
           />
         ))}
+      </div>
+    );
+  };
+
+  const renderEventDetail = (event: any) => {
+    const data = event.data;
+    const isExpanded = expandedEvent === event.id;
+    
+    return (
+      <div key={event.id} className="relative pl-10">
+        <div className={`absolute left-2 w-4 h-4 rounded-full ${
+          event.color === 'green' ? 'bg-green-500' :
+          event.color === 'red' ? 'bg-red-500' :
+          event.color === 'orange' ? 'bg-orange-500' :
+          'bg-blue-500'
+        }`} />
+        <div className={`p-4 rounded-lg ${
+          event.color === 'green' ? 'bg-green-50' :
+          event.color === 'red' ? 'bg-red-50' :
+          event.color === 'orange' ? 'bg-orange-50' :
+          'bg-blue-50'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className={`${
+                event.color === 'green' ? 'text-green-600' :
+                event.color === 'red' ? 'text-red-600' :
+                event.color === 'orange' ? 'text-orange-600' :
+                'text-blue-600'
+              }`}>{event.icon}</span>
+              <span className="font-medium text-gray-800">{event.title}</span>
+              <span className="text-xs text-gray-400 px-2 py-0.5 bg-white rounded">
+                {event.type === 'license' ? '证照' :
+                 event.type === 'inspection' ? '检查' :
+                 event.type === 'review' ? '评价' :
+                 event.type === 'rectification' ? '整改' : '经营'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">{event.date}</span>
+              <button
+                onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+                className="p-1 hover:bg-white rounded transition-colors"
+              >
+                {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+              </button>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">{event.description}</p>
+          
+          {isExpanded && (
+            <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+              {event.type === 'license' && data && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">证照类型</span>
+                    <span className="text-sm font-medium text-gray-800">{data.type}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">证照编号</span>
+                    <span className="text-sm font-medium text-gray-800">{data.number}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">发证日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.issueDate}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">到期日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.expireDate}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">状态</span>
+                    {getLicenseStatusBadge(data.status)}
+                  </div>
+                </div>
+              )}
+              
+              {event.type === 'inspection' && data && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">检查类型</span>
+                    <span className="text-sm font-medium text-gray-800">
+                      {data.type === 'food' ? '食品安全检查' : data.type === 'fire' ? '消防安全检查' : '日常巡检'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">检查日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.inspectionDate}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">检查人员</span>
+                    <span className="text-sm font-medium text-gray-800">{data.inspector}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">检查结果</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      data.result === 'pass' ? 'bg-green-100 text-green-700' :
+                      data.result === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {data.result === 'pass' ? '合格' : data.result === 'partial' ? '部分合格' : '不合格'}
+                    </span>
+                  </div>
+                  {data.issues && data.issues.length > 0 && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">发现问题</span>
+                      <ul className="text-sm text-gray-800 list-disc list-inside">
+                        {data.issues.map((issue: string, idx: number) => (
+                          <li key={idx}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {event.type === 'review' && data && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">类型</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      data.type === 'complaint' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {data.type === 'complaint' ? '投诉' : '评价'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">评价人</span>
+                    <span className="text-sm font-medium text-gray-800">{data.reviewer}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">评分</span>
+                    {renderStars(data.rating)}
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.reviewDate}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">状态</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      data.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                      data.status === 'processed' ? 'bg-blue-100 text-blue-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {data.status === 'pending' ? '待处理' : data.status === 'processed' ? '处理中' : '已解决'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-500 mb-1 block">内容</span>
+                    <p className="text-sm text-gray-800">{data.content}</p>
+                  </div>
+                  {data.reply && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">回复</span>
+                      <p className="text-sm text-blue-600">{data.reply}</p>
+                    </div>
+                  )}
+                  {data.rectificationId && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500">关联整改</span>
+                      <span className="text-xs text-purple-600">已转整改任务</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {event.type === 'rectification' && data && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">任务标题</span>
+                    <span className="text-sm font-medium text-gray-800">{data.title}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">创建日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.createdAt}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">截止日期</span>
+                    <span className="text-sm font-medium text-gray-800">{data.deadline}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">状态</span>
+                    {getRectificationStatusBadge(data.status)}
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">来源</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      data.sourceType === 'inspection' ? 'bg-orange-100 text-orange-700' :
+                      data.sourceType === 'complaint' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {data.sourceType === 'inspection' ? '检查发现' : data.sourceType === 'complaint' ? '投诉转化' : '手动创建'}
+                    </span>
+                  </div>
+                  {data.assignee && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500">负责人</span>
+                      <span className="text-sm font-medium text-gray-800">{data.assignee}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-sm text-gray-500 mb-1 block">问题描述</span>
+                    <p className="text-sm text-gray-800">{data.description}</p>
+                  </div>
+                  {data.rectificationNote && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">整改说明</span>
+                      <p className="text-sm text-green-600">{data.rectificationNote}</p>
+                    </div>
+                  )}
+                  {data.attachmentUrls && data.attachmentUrls.length > 0 && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">附件</span>
+                      <div className="flex flex-wrap gap-2">
+                        {data.attachmentUrls.map((url: string, idx: number) => (
+                          <span key={idx} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded flex items-center gap-1">
+                            <Paperclip className="w-3 h-3" />
+                            {url}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {data.rejectionReason && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">驳回原因</span>
+                      <p className="text-sm text-red-600">{data.rejectionReason}</p>
+                    </div>
+                  )}
+                  {data.remark && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">备注</span>
+                      <p className="text-sm text-gray-800">{data.remark}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {event.type === 'business' && data && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">月份</span>
+                    <span className="text-sm font-medium text-gray-800">{data.month}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">营业额</span>
+                    <span className="text-sm font-medium text-gray-800">¥{data.revenue.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">客流量</span>
+                    <span className="text-sm font-medium text-gray-800">{data.customerCount.toLocaleString()}人</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">租金缴纳</span>
+                    <span className="text-sm font-medium text-gray-800">¥{data.rentPaid.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">租金状态</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      data.rentStatus === 'paid' ? 'bg-green-100 text-green-700' :
+                      data.rentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {data.rentStatus === 'paid' ? '已缴纳' : data.rentStatus === 'partial' ? '部分缴纳' : '未缴纳'}
+                    </span>
+                  </div>
+                  {data.notes && (
+                    <div>
+                      <span className="text-sm text-gray-500 mb-1 block">备注</span>
+                      <p className="text-sm text-gray-800">{data.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {data?.attachmentUrls && data.attachmentUrls.length > 0 && !isExpanded && (
+            <div className="mt-2 flex items-center gap-2">
+              <Paperclip className="w-3 h-3 text-gray-400" />
+              <span className="text-xs text-gray-500">{data.attachmentUrls.length}个附件</span>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -276,7 +582,14 @@ const MerchantDetail: React.FC = () => {
     ? (merchantReviews.reduce((sum, r) => sum + r.rating, 0) / merchantReviews.length).toFixed(1)
     : '暂无';
 
-  const expiringLicenses = merchantLicenses.filter(l => l.status === 'expiring');
+  const filterOptions: Array<{ value: TimelineFilter; label: string; icon: React.ReactNode }> = [
+    { value: 'all', label: '全部', icon: <Filter className="w-4 h-4" /> },
+    { value: 'license', label: '证照', icon: <FileCheck className="w-4 h-4" /> },
+    { value: 'inspection', label: '检查', icon: <Activity className="w-4 h-4" /> },
+    { value: 'review', label: '评价', icon: <Star className="w-4 h-4" /> },
+    { value: 'rectification', label: '整改', icon: <AlertTriangle className="w-4 h-4" /> },
+    { value: 'business', label: '经营', icon: <DollarSign className="w-4 h-4" /> },
+  ];
 
   return (
     <div className="space-y-6">
@@ -324,7 +637,7 @@ const MerchantDetail: React.FC = () => {
         <div className="bg-white rounded-xl p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-orange-600" />
-            风险提示
+            风险提示 ({risks.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {risks.map((risk, index) => (
@@ -360,7 +673,7 @@ const MerchantDetail: React.FC = () => {
         <div className="bg-white rounded-xl p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Clock className="w-5 h-5 text-blue-600" />
-            待办事项
+            待办事项 ({pendingTasks.length})
           </h2>
           <div className="space-y-3">
             {pendingTasks.map((task, index) => (
@@ -432,54 +745,37 @@ const MerchantDetail: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-600" />
-              经营画像时间线
-            </h2>
-            {timelineEvents.length > 0 ? (
-              <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <Activity className="w-5 h-5 text-blue-600" />
+                经营画像时间线 ({filteredTimelineEvents.length})
+              </h2>
+              <div className="flex items-center gap-2">
+                {filterOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setTimelineFilter(option.value)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      timelineFilter === option.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {filteredTimelineEvents.length > 0 ? (
+              <div className="relative max-h-96 overflow-y-auto">
                 <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
                 <div className="space-y-4">
-                  {timelineEvents.slice(0, 20).map((event, index) => (
-                    <div key={index} className="relative pl-10">
-                      <div className={`absolute left-2 w-4 h-4 rounded-full ${
-                        event.color === 'green' ? 'bg-green-500' :
-                        event.color === 'red' ? 'bg-red-500' :
-                        event.color === 'orange' ? 'bg-orange-500' :
-                        'bg-blue-500'
-                      }`} />
-                      <div className={`p-4 rounded-lg ${
-                        event.color === 'green' ? 'bg-green-50' :
-                        event.color === 'red' ? 'bg-red-50' :
-                        event.color === 'orange' ? 'bg-orange-50' :
-                        'bg-blue-50'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`${
-                              event.color === 'green' ? 'text-green-600' :
-                              event.color === 'red' ? 'text-red-600' :
-                              event.color === 'orange' ? 'text-orange-600' :
-                              'text-blue-600'
-                            }`}>{event.icon}</span>
-                            <span className="font-medium text-gray-800">{event.title}</span>
-                          </div>
-                          <span className="text-xs text-gray-500">{event.date}</span>
-                        </div>
-                        <p className="text-sm text-gray-600">{event.description}</p>
-                        {event.data?.attachmentUrls && event.data.attachmentUrls.length > 0 && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <Paperclip className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-500">{event.data.attachmentUrls.join(', ')}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {filteredTimelineEvents.map((event) => renderEventDetail(event))}
                 </div>
               </div>
             ) : (
-              <p className="text-center text-gray-400 py-8">暂无经营记录</p>
+              <p className="text-center text-gray-400 py-8">暂无{timelineFilter !== 'all' ? filterOptions.find(f => f.value === timelineFilter)?.label : ''}记录</p>
             )}
           </div>
 
@@ -492,6 +788,10 @@ const MerchantDetail: React.FC = () => {
               <div className="space-y-1">
                 <p className="text-sm text-gray-500">商户ID</p>
                 <p className="font-medium text-gray-800">{merchant.id}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500">商户类别</p>
+                <span className="px-2 py-1 bg-blue-50 text-blue-700 text-sm rounded">{merchant.category}</span>
               </div>
               <div className="space-y-1">
                 <p className="text-sm text-gray-500">联系人</p>
@@ -564,7 +864,7 @@ const MerchantDetail: React.FC = () => {
               证照信息 ({merchantLicenses.length})
             </h2>
             {merchantLicenses.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-48 overflow-y-auto">
                 {merchantLicenses.map((license) => (
                   <div key={license.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
@@ -587,8 +887,8 @@ const MerchantDetail: React.FC = () => {
               价格备案 ({merchantPrices.length})
             </h2>
             {merchantPrices.length > 0 ? (
-              <div className="space-y-2">
-                {merchantPrices.slice(0, 5).map((price) => (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {merchantPrices.map((price) => (
                   <div key={price.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                     <span className="text-sm text-gray-800">{price.productName}</span>
                     <span className="text-sm font-medium text-gray-800">¥{price.currentPrice}</span>
@@ -606,27 +906,16 @@ const MerchantDetail: React.FC = () => {
               整改任务 ({merchantRectifications.length})
             </h2>
             {merchantRectifications.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-48 overflow-y-auto">
                 {merchantRectifications.map((rect) => (
                   <div key={rect.id} className="p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-800">{rect.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        rect.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                        rect.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                        rect.status === 'reviewing' ? 'bg-purple-100 text-purple-700' :
-                        rect.status === 'completed' ? 'bg-green-100 text-green-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {rect.status === 'pending' ? '待处理' :
-                         rect.status === 'processing' ? '处理中' :
-                         rect.status === 'reviewing' ? '待复查' :
-                         rect.status === 'completed' ? '已完成' : '已驳回'}
-                      </span>
+                      <span className="text-sm font-medium text-gray-800 truncate max-w-[120px]">{rect.title}</span>
+                      {getRectificationStatusBadge(rect.status)}
                     </div>
                     <p className="text-xs text-gray-500">截止: {rect.deadline}</p>
                     {rect.rejectionReason && (
-                      <p className="text-xs text-red-600 mt-1">驳回: {rect.rejectionReason}</p>
+                      <p className="text-xs text-red-600 mt-1 truncate">驳回: {rect.rejectionReason}</p>
                     )}
                   </div>
                 ))}
@@ -642,8 +931,8 @@ const MerchantDetail: React.FC = () => {
               经营数据 ({merchantBusinessData.length}月)
             </h2>
             {merchantBusinessData.length > 0 ? (
-              <div className="space-y-2">
-                {merchantBusinessData.slice(-6).reverse().map((data) => (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {merchantBusinessData.slice().sort((a, b) => b.month.localeCompare(a.month)).slice(0, 6).map((data) => (
                   <div key={data.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">{data.month}</span>
                     <div className="text-right">

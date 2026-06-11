@@ -137,31 +137,58 @@ export const useStore = create<Store>((set, get) => ({
     const merchant = state.merchants.find(m => m.id === id);
     const oldName = merchant?.name;
     const newName = data.name;
+    const oldCategory = merchant?.category;
+    const newCategory = data.category;
     const nameChanged = newName && oldName !== newName;
+    const categoryChanged = newCategory && oldCategory !== newCategory;
     
-    const newState = {
+    const newState: any = {
       merchants: state.merchants.map(m => m.id === id ? { ...m, ...data } : m),
     };
     
-    if (nameChanged) {
-      newState.licenses = state.licenses.map(l => 
-        l.merchantId === id ? { ...l, merchantName: newName } : l
-      );
-      newState.prices = state.prices.map(p => 
-        p.merchantId === id ? { ...p, merchantName: newName } : p
-      );
-      newState.inspections = state.inspections.map(i => 
-        i.merchantId === id ? { ...i, merchantName: newName } : i
-      );
-      newState.reviews = state.reviews.map(r => 
-        r.merchantId === id ? { ...r, merchantName: newName } : r
-      );
-      newState.rectifications = state.rectifications.map(r => 
-        r.merchantId === id ? { ...r, merchantName: newName } : r
-      );
-      newState.businessData = state.businessData.map(b => 
-        b.merchantId === id ? { ...b, merchantName: newName } : b
-      );
+    if (nameChanged || categoryChanged) {
+      newState.licenses = state.licenses.map(l => {
+        if (l.merchantId !== id) return l;
+        const updated = { ...l };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
+      newState.prices = state.prices.map(p => {
+        if (p.merchantId !== id) return p;
+        const updated = { ...p };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
+      newState.inspections = state.inspections.map(i => {
+        if (i.merchantId !== id) return i;
+        const updated = { ...i };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
+      newState.reviews = state.reviews.map(r => {
+        if (r.merchantId !== id) return r;
+        const updated = { ...r };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
+      newState.rectifications = state.rectifications.map(r => {
+        if (r.merchantId !== id) return r;
+        const updated = { ...r };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
+      newState.businessData = state.businessData.map(b => {
+        if (b.merchantId !== id) return b;
+        const updated = { ...b };
+        if (nameChanged) updated.merchantName = newName;
+        if (categoryChanged) updated.merchantCategory = newCategory;
+        return updated;
+      });
     }
     
     saveToStorage({ ...state, ...newState });

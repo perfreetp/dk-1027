@@ -21,6 +21,7 @@ export interface License {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   type: string;
   number: string;
   issueDate: string;
@@ -33,6 +34,7 @@ export interface Price {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   productName: string;
   originalPrice: number;
   currentPrice: number;
@@ -45,6 +47,7 @@ export interface Inspection {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   type: 'food' | 'fire' | 'daily';
   inspectionDate: string;
   inspector: string;
@@ -58,6 +61,7 @@ export interface Review {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   type: 'review' | 'complaint';
   content: string;
   rating: number;
@@ -72,6 +76,7 @@ export interface Rectification {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   title: string;
   description: string;
   deadline: string;
@@ -91,6 +96,7 @@ export interface BusinessData {
   id: string;
   merchantId: string;
   merchantName: string;
+  merchantCategory?: string;
   month: string;
   revenue: number;
   customerCount: number;

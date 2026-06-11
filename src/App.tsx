@@ -10,6 +10,7 @@ import InspectionManagement from "@/pages/InspectionManagement";
 import ReviewManagement from "@/pages/ReviewManagement";
 import RectificationManagement from "@/pages/RectificationManagement";
 import Reports from "@/pages/Reports";
+import RiskComparison from "@/pages/RiskComparison";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/reviews" element={<ReviewManagement />} />
           <Route path="/rectifications" element={<RectificationManagement />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/risk-comparison" element={<RiskComparison />} />
         </Routes>
       </Layout>
     </Router>

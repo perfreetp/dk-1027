@@ -8,6 +8,7 @@ import {
   MessageSquare,
   CheckCircle,
   BarChart3,
+  AlertTriangle,
   Menu,
   X,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ const menuItems = [
   { id: 'reviews', label: '游客评价', icon: MessageSquare, path: '/reviews' },
   { id: 'rectifications', label: '整改跟踪', icon: CheckCircle, path: '/rectifications' },
   { id: 'reports', label: '数据报表', icon: BarChart3, path: '/reports' },
+  { id: 'risk-comparison', label: '风险对比', icon: AlertTriangle, path: '/risk-comparison' },
 ];
 
 const Sidebar: React.FC = () => {
