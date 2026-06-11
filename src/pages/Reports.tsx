@@ -1,22 +1,49 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
-import { BarChart3, Download, Calendar, TrendingUp, Building2, Star, AlertTriangle, FileCheck } from 'lucide-react';
+import { BarChart3, Download, Calendar, TrendingUp, Building2, Star, AlertTriangle, FileCheck, Plus, Edit, Trash2 } from 'lucide-react';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { monthlyRevenue, categoryDistribution, ratingDistribution, inspectionStats } from '../data/mockData';
+import { BusinessData } from '../types';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const Reports: React.FC = () => {
-  const { merchants, licenses, inspections, reviews, rectifications } = useStore();
+  const { merchants, licenses, inspections, reviews, rectifications, businessData, addBusinessData, updateBusinessData } = useStore();
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState('2024-06-30');
+  const [showBusinessDataModal, setShowBusinessDataModal] = useState(false);
+  const [selectedMerchantId, setSelectedMerchantId] = useState('');
+
+  interface FormData {
+    merchantId: string;
+    month: string;
+    revenue: string;
+    customerCount: string;
+    rentPaid: string;
+    rentStatus: 'paid' | 'partial' | 'unpaid';
+    notes: string;
+  }
+
+  const [formData, setFormData] = useState<FormData>({
+    merchantId: '',
+    month: '',
+    revenue: '',
+    customerCount: '',
+    rentPaid: '',
+    rentStatus: 'paid',
+    notes: '',
+  });
 
   const totalRevenue = monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0);
   const avgMonthlyRevenue = (totalRevenue / monthlyRevenue.length).toFixed(0);
   const rectificationRate = rectifications.length > 0
     ? ((rectifications.filter(r => r.status === 'completed').length / rectifications.length) * 100).toFixed(0)
     : '0';
+
+  const totalBusinessRevenue = businessData.reduce((sum, b) => sum + b.revenue, 0);
+  const totalCustomers = businessData.reduce((sum, b) => sum + b.customerCount, 0);
+  const totalRentPaid = businessData.reduce((sum, b) => sum + b.rentPaid, 0);
 
   const revenueChartData = {
     labels: monthlyRevenue.map(m => m.month),
@@ -117,14 +144,80 @@ const Reports: React.FC = () => {
 
   const exportData = () => {
     const data = {
-      merchants: merchants.length,
-      licenses: licenses.length,
-      inspections: inspections.length,
-      reviews: reviews.length,
-      rectifications: rectifications.length,
-      avgRating: reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0',
-      rectificationRate: `${rectificationRate}%`,
-      totalRevenue: `${(totalRevenue / 10000).toFixed(0)}万元`,
+      summary: {
+        merchants: merchants.length,
+        licenses: licenses.length,
+        inspections: inspections.length,
+        reviews: reviews.length,
+        rectifications: rectifications.length,
+        avgRating: reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0',
+        rectificationRate: `${rectificationRate}%`,
+        totalRevenue: `${(totalBusinessRevenue / 10000).toFixed(0)}万元`,
+        totalCustomers: totalCustomers,
+        totalRentPaid: `${(totalRentPaid / 10000).toFixed(0)}万元`,
+      },
+      merchants: merchants.map(m => ({
+        id: m.id,
+        name: m.name,
+        category: m.category,
+        status: m.status,
+        starLevel: m.starLevel,
+        isBlacklisted: m.isBlacklisted,
+      })),
+      businessData: businessData.map(b => ({
+        id: b.id,
+        merchantId: b.merchantId,
+        merchantName: b.merchantName,
+        month: b.month,
+        revenue: b.revenue,
+        customerCount: b.customerCount,
+        rentPaid: b.rentPaid,
+        rentStatus: b.rentStatus,
+        notes: b.notes,
+      })),
+      licenses: licenses.map(l => ({
+        id: l.id,
+        merchantId: l.merchantId,
+        merchantName: l.merchantName,
+        type: l.type,
+        number: l.number,
+        issueDate: l.issueDate,
+        expireDate: l.expireDate,
+        status: l.status,
+      })),
+      inspections: inspections.map(i => ({
+        id: i.id,
+        merchantId: i.merchantId,
+        merchantName: i.merchantName,
+        type: i.type,
+        inspectionDate: i.inspectionDate,
+        inspector: i.inspector,
+        result: i.result,
+        issues: i.issues,
+      })),
+      reviews: reviews.map(r => ({
+        id: r.id,
+        merchantId: r.merchantId,
+        merchantName: r.merchantName,
+        type: r.type,
+        content: r.content,
+        rating: r.rating,
+        reviewer: r.reviewer,
+        reviewDate: r.reviewDate,
+        status: r.status,
+      })),
+      rectifications: rectifications.map(r => ({
+        id: r.id,
+        merchantId: r.merchantId,
+        merchantName: r.merchantName,
+        title: r.title,
+        description: r.description,
+        deadline: r.deadline,
+        status: r.status,
+        assignee: r.assignee,
+        createdAt: r.createdAt,
+        completedAt: r.completedAt,
+      })),
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -134,6 +227,59 @@ const Reports: React.FC = () => {
     a.download = `监管台账_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleBusinessDataSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const merchant = merchants.find(m => m.id === formData.merchantId);
+    const existingData = businessData.find(
+      b => b.merchantId === formData.merchantId && b.month === formData.month
+    );
+    
+    if (existingData) {
+      updateBusinessData(existingData.id, {
+        revenue: parseFloat(formData.revenue),
+        customerCount: parseInt(formData.customerCount),
+        rentPaid: parseFloat(formData.rentPaid),
+        rentStatus: formData.rentStatus,
+        notes: formData.notes,
+      });
+    } else {
+      addBusinessData({
+        merchantId: formData.merchantId,
+        merchantName: merchant?.name || '',
+        month: formData.month,
+        revenue: parseFloat(formData.revenue),
+        customerCount: parseInt(formData.customerCount),
+        rentPaid: parseFloat(formData.rentPaid),
+        rentStatus: formData.rentStatus,
+        notes: formData.notes,
+      });
+    }
+    
+    setShowBusinessDataModal(false);
+    setFormData({
+      merchantId: '',
+      month: '',
+      revenue: '',
+      customerCount: '',
+      rentPaid: '',
+      rentStatus: 'paid',
+      notes: '',
+    });
+  };
+
+  const handleEditBusinessData = (data: BusinessData) => {
+    setFormData({
+      merchantId: data.merchantId,
+      month: data.month,
+      revenue: data.revenue.toString(),
+      customerCount: data.customerCount.toString(),
+      rentPaid: data.rentPaid.toString(),
+      rentStatus: data.rentStatus,
+      notes: data.notes || '',
+    });
+    setShowBusinessDataModal(true);
   };
 
   const statsCards = [
@@ -169,11 +315,16 @@ const Reports: React.FC = () => {
     },
     {
       title: '累计营收',
-      value: `${(totalRevenue / 10000).toFixed(0)}万`,
+      value: `${(totalBusinessRevenue / 10000).toFixed(0)}万`,
       icon: BarChart3,
       color: 'bg-cyan-500',
     },
   ];
+
+  const filteredBusinessData = businessData.filter(b => {
+    if (!selectedMerchantId) return true;
+    return b.merchantId === selectedMerchantId;
+  });
 
   return (
     <div className="space-y-6">
@@ -237,7 +388,7 @@ const Reports: React.FC = () => {
           <div className="mt-4 grid grid-cols-2 gap-4 text-center">
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-500">累计营收</p>
-              <p className="text-xl font-bold text-gray-800">{(totalRevenue / 10000).toFixed(0)} 万元</p>
+              <p className="text-xl font-bold text-gray-800">{(totalBusinessRevenue / 10000).toFixed(0)} 万元</p>
             </div>
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-500">月均营收</p>
@@ -278,6 +429,101 @@ const Reports: React.FC = () => {
               <p className="text-sm text-red-600">不合格</p>
               <p className="text-xl font-bold text-red-700">{inspectionStats.fail}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-800">经营数据填报</h2>
+          <button
+            onClick={() => setShowBusinessDataModal(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>新增数据</span>
+          </button>
+        </div>
+        <div className="p-4">
+          <select
+            value={selectedMerchantId}
+            onChange={(e) => setSelectedMerchantId(e.target.value)}
+            className="mb-4 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">全部商户</option>
+            {merchants.map((merchant) => (
+              <option key={merchant.id} value={merchant.id}>
+                {merchant.name}
+              </option>
+            ))}
+          </select>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商户名称</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">月份</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">营业额(元)</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">客流量</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">租金缴纳(元)</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">租金状态</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">备注</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredBusinessData.map((data) => (
+                  <tr key={data.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-medium text-gray-800">{data.merchantName}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-sm rounded">{data.month}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-800 font-medium">{data.revenue.toLocaleString()}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-800">{data.customerCount.toLocaleString()}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-800">{data.rentPaid.toLocaleString()}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        data.rentStatus === 'paid' ? 'bg-green-100 text-green-700' :
+                        data.rentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {data.rentStatus === 'paid' ? '已缴纳' : data.rentStatus === 'partial' ? '部分缴纳' : '未缴纳'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-600 text-sm">{data.notes || '-'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditBusinessData(data)}
+                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="编辑"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredBusinessData.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <Building2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500">暂无经营数据</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -356,6 +602,118 @@ const Reports: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {showBusinessDataModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">经营数据填报</h3>
+            <form onSubmit={handleBusinessDataSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">商户名称</label>
+                <select
+                  value={formData.merchantId}
+                  onChange={(e) => setFormData({ ...formData, merchantId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">请选择商户</option>
+                  {merchants.map((merchant) => (
+                    <option key={merchant.id} value={merchant.id}>
+                      {merchant.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">月份</label>
+                <input
+                  type="month"
+                  value={formData.month}
+                  onChange={(e) => setFormData({ ...formData, month: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">营业额(元)</label>
+                <input
+                  type="number"
+                  value={formData.revenue}
+                  onChange={(e) => setFormData({ ...formData, revenue: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入营业额"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">客流量</label>
+                <input
+                  type="number"
+                  value={formData.customerCount}
+                  onChange={(e) => setFormData({ ...formData, customerCount: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入客流量"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">租金缴纳(元)</label>
+                <input
+                  type="number"
+                  value={formData.rentPaid}
+                  onChange={(e) => setFormData({ ...formData, rentPaid: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入租金缴纳金额"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">租金状态</label>
+                <select
+                  value={formData.rentStatus}
+                  onChange={(e) => setFormData({ ...formData, rentStatus: e.target.value as 'paid' | 'partial' | 'unpaid' })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="paid">已缴纳</option>
+                  <option value="partial">部分缴纳</option>
+                  <option value="unpaid">未缴纳</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={2}
+                  placeholder="其他说明..."
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBusinessDataModal(false);
+                    setFormData({
+                      merchantId: '',
+                      month: '',
+                      revenue: '',
+                      customerCount: '',
+                      rentPaid: '',
+                      rentStatus: 'paid',
+                      notes: '',
+                    });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  保存数据
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

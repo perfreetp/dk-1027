@@ -19,7 +19,8 @@ import { monthlyRevenue, categoryDistribution } from '../data/mockData';
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const Dashboard: React.FC = () => {
-  const { stats, licenses, rectifications, reviews } = useStore();
+  const { getStats, licenses, rectifications, reviews } = useStore();
+  const stats = getStats();
 
   const upcomingExpirations = licenses.filter(l => l.status === 'expiring').slice(0, 3);
   const pendingTasks = rectifications.filter(r => r.status !== 'completed').slice(0, 3);

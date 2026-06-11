@@ -65,6 +65,7 @@ export interface Review {
   reviewDate: string;
   status: 'pending' | 'processed' | 'resolved';
   reply?: string;
+  rectificationId?: string;
 }
 
 export interface Rectification {
@@ -79,6 +80,23 @@ export interface Rectification {
   createdAt: string;
   completedAt?: string;
   remark?: string;
+  rejectionReason?: string;
+  rectificationNote?: string;
+  attachmentUrls?: string[];
+  sourceType?: 'inspection' | 'complaint' | 'manual';
+  sourceId?: string;
+}
+
+export interface BusinessData {
+  id: string;
+  merchantId: string;
+  merchantName: string;
+  month: string;
+  revenue: number;
+  customerCount: number;
+  rentPaid: number;
+  rentStatus: 'paid' | 'partial' | 'unpaid';
+  notes?: string;
 }
 
 export interface DashboardStats {
@@ -94,3 +112,4 @@ export interface DashboardStats {
 
 export type MerchantStatus = 'all' | 'operating' | 'closed' | 'suspended';
 export type SortOrder = 'asc' | 'desc';
+export type ExpirationFilter = 'all' | '30days' | '60days';

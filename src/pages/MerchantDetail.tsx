@@ -1,18 +1,19 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { ArrowLeft, Star, Phone, MapPin, Clock, AlertCircle, Calendar, FileCheck, Tag, Award, User } from 'lucide-react';
+import { ArrowLeft, Star, Phone, MapPin, Clock, AlertCircle, Calendar, FileCheck, Tag, Award, User, AlertTriangle } from 'lucide-react';
 
 const MerchantDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { merchants, licenses, prices, inspections, reviews } = useStore();
+  const { merchants, licenses, prices, inspections, reviews, rectifications } = useStore();
 
   const merchant = merchants.find((m) => m.id === id);
   const merchantLicenses = licenses.filter((l) => l.merchantId === id);
   const merchantPrices = prices.filter((p) => p.merchantId === id);
   const merchantInspections = inspections.filter((i) => i.merchantId === id);
   const merchantReviews = reviews.filter((r) => r.merchantId === id);
+  const merchantRectifications = rectifications.filter((r) => r.merchantId === id);
 
   if (!merchant) {
     return (
@@ -286,20 +287,40 @@ const MerchantDetail: React.FC = () => {
               {avgRating !== '暂无' && renderStars(avgRating)}
               <p className="text-sm text-gray-500 mt-1">{merchantReviews.length} 条评价</p>
             </div>
-            {merchantReviews.slice(0, 3).map((review) => (
-              <div key={review.id} className="p-3 bg-gray-50 rounded-lg mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-800">{review.reviewer}</span>
-                  <span className="text-xs text-gray-400">{review.reviewDate}</span>
-                </div>
-                <p className="text-sm text-gray-600">{review.content}</p>
-                {review.reply && (
-                  <div className="mt-2 p-2 bg-white rounded text-xs text-blue-600">
-                    回复: {review.reply}
+            {merchantReviews.slice(0, 3).map((review) => {
+              const relatedRectification = merchantRectifications.find(r => r.sourceId === review.id);
+              return (
+                <div key={review.id} className="p-3 bg-gray-50 rounded-lg mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800">{review.reviewer}</span>
+                      {review.type === 'complaint' && (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">投诉</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-400">{review.reviewDate}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  <p className="text-sm text-gray-600">{review.content}</p>
+                  {review.reply && (
+                    <div className="mt-2 p-2 bg-white rounded text-xs text-blue-600">
+                      回复: {review.reply}
+                    </div>
+                  )}
+                  {relatedRectification && (
+                    <div className="mt-2 p-2 bg-purple-50 rounded text-xs">
+                      <span className="text-purple-600">
+                        整改进度: {
+                          relatedRectification.status === 'pending' ? '待处理' :
+                          relatedRectification.status === 'processing' ? '处理中' :
+                          relatedRectification.status === 'reviewing' ? '待复查' :
+                          relatedRectification.status === 'completed' ? '已完成' : '已驳回'
+                        }
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-sm">
@@ -330,6 +351,51 @@ const MerchantDetail: React.FC = () => {
               </div>
             ) : (
               <p className="text-center text-gray-400 py-8">暂无检查记录</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-600" />
+              整改任务
+            </h2>
+            {merchantRectifications.length > 0 ? (
+              <div className="space-y-3">
+                {merchantRectifications.map((rect) => (
+                  <div key={rect.id} className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-800">{rect.title}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        rect.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                        rect.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                        rect.status === 'reviewing' ? 'bg-purple-100 text-purple-700' :
+                        rect.status === 'completed' ? 'bg-green-100 text-green-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {rect.status === 'pending' ? '待处理' :
+                         rect.status === 'processing' ? '处理中' :
+                         rect.status === 'reviewing' ? '待复查' :
+                         rect.status === 'completed' ? '已完成' : '已驳回'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500">截止日期: {rect.deadline}</p>
+                    <p className="text-xs text-gray-500">负责人: {rect.assignee || '未分配'}</p>
+                    {rect.sourceType === 'complaint' && (
+                      <p className="text-xs text-red-600 mt-1">来源: 游客投诉</p>
+                    )}
+                    {rect.sourceType === 'inspection' && (
+                      <p className="text-xs text-orange-600 mt-1">来源: 检查发现</p>
+                    )}
+                    {rect.rejectionReason && (
+                      <div className="mt-2 p-2 bg-red-50 rounded">
+                        <p className="text-xs text-red-600">驳回原因: {rect.rejectionReason}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400 py-8">暂无整改任务</p>
             )}
           </div>
         </div>

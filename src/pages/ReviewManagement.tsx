@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
-import { Search, MessageSquare, Star, AlertCircle, CheckCircle, Reply, Calendar, User } from 'lucide-react';
+import { Search, MessageSquare, Star, AlertCircle, CheckCircle, Reply, Calendar, User, ArrowRight } from 'lucide-react';
 import { Review } from '../types';
 
 type ReviewType = 'all' | 'review' | 'complaint';
 type ReviewStatus = 'all' | 'pending' | 'processed' | 'resolved';
 
 const ReviewManagement: React.FC = () => {
-  const { reviews, updateReview } = useStore();
+  const { reviews, updateReview, createRectificationFromComplaint, rectifications } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<ReviewType>('all');
   const [statusFilter, setStatusFilter] = useState<ReviewStatus>('all');
@@ -208,7 +208,23 @@ const ReviewManagement: React.FC = () => {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {review.status === 'pending' && (
+                {review.type === 'complaint' && !review.rectificationId && review.status !== 'resolved' && (
+                  <button
+                    onClick={() => {
+                      createRectificationFromComplaint(review.id);
+                    }}
+                    className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-1"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    转整改
+                  </button>
+                )}
+                {review.rectificationId && (
+                  <span className="px-4 py-2 bg-purple-100 text-purple-700 text-sm rounded-lg">
+                    已转整改
+                  </span>
+                )}
+                {review.status === 'pending' && !review.rectificationId && (
                   <>
                     <button
                       onClick={() => handleProcess(review.id)}
@@ -225,7 +241,7 @@ const ReviewManagement: React.FC = () => {
                     </button>
                   </>
                 )}
-                {review.status === 'processed' && (
+                {review.status === 'processed' && !review.rectificationId && (
                   <>
                     <button
                       onClick={() => handleResolve(review.id)}
@@ -242,7 +258,7 @@ const ReviewManagement: React.FC = () => {
                     </button>
                   </>
                 )}
-                {review.status === 'resolved' && (
+                {review.status === 'resolved' && !review.rectificationId && (
                   <span className="px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg">已解决</span>
                 )}
               </div>
